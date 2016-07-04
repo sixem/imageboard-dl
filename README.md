@@ -7,14 +7,21 @@ Python based image downloader for various imageboards.
 `cloudflare-scrape` ([cloudflare-scrape](https://github.com/Anorov/cloudflare-scrape "cloudflare-scrape"))
 
 # Supported sites
-`2ch.hk`
-`4chan`
-`4plebs`
-`8chan`
-`arhivach`
-`librechan`
-`masterchan`
-If you want more sites added please let me know.
+`2ch.hk`  
+
+`4chan`  
+
+`4plebs`  
+
+`8chan`  
+
+`arhivach`  
+
+`librechan`  
+
+`masterchan`  
+
+*If you want more sites added please let me know.*
 
 ## Usage
 ```
