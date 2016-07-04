@@ -13,9 +13,7 @@ Python based image downloader for various imageboards.
 `8chan`  
 `arhivach`  
 `librechan`  
-`masterchan`  
-
-*If you want more sites added please let me know.*
+`masterchan`
 
 ## Usage
 ```
