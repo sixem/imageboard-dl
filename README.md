@@ -2,12 +2,9 @@
 Python based image downloader for various imageboards.
 
 # Requirements
-```
-Python 3
-BeautifulSoup4
-cloudflare-scrape (Since alot of Imageboards use this)
-```
-[cloudflare-scrape](https://github.com/Anorov/cloudflare-scrape "cloudflare-scrape")
+`Python 3`
+`BeautifulSoup4`
+`cloudflare-scrape` ([cloudflare-scrape](https://github.com/Anorov/cloudflare-scrape "cloudflare-scrape"))
 
 # Supported sites
 `2ch.hk`
