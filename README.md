@@ -2,8 +2,8 @@
 Python based image downloader for various imageboards.
 
 # Requirements
-`Python 3`
-`BeautifulSoup4`
+`Python 3`  
+`BeautifulSoup4`  
 `cloudflare-scrape` ([cloudflare-scrape](https://github.com/Anorov/cloudflare-scrape "cloudflare-scrape"))
 
 # Supported sites
