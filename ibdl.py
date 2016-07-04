@@ -15,6 +15,9 @@ def report(site, message):
     print('[{}] {}'.format(site, message))
 
 class variables():
+    imageboard_name = None
+    always_use_cf = False
+    
     dict_general = {
         'cfs_timeout': 60,
         'save_directory': '{}/Downloads'.format(expanduser("~")),
@@ -196,7 +199,7 @@ class downloaders():
             for i in range(0, 4):
                 self.box[i].append(values[i])
         return self.box
-    
+
     @classmethod
     def request(self, url):
         cfs = cfscrape.create_scraper()
@@ -207,17 +210,16 @@ class downloaders():
             raise ErrorRequest
 
 class ibdl(object):
-    
+
     imageboard_name = None
-    
-    def __init__(self, site):
+
+    def __init__(self, site, cf):
         self.current_url = site
+        variables.always_use_cf = cf
         
         self.detect_site()
-        
-        self.download_images(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site))
-        
-        
+        self.download_images(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site)) 
+
     @classmethod
     def sanitize_filename(self, fn):
         return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
@@ -228,8 +230,8 @@ class ibdl(object):
             os.makedirs(a)
         
     @classmethod
-    def download(self, site, uniq, url, name=None, destination=None, cf=False):
-        #try:
+    def download(self, site, uniq, url, name=None, destination=None, cf=variables.always_use_cf):
+        try:
             cfs = cfscrape.create_scraper()
     
             if name is None:
@@ -267,14 +269,14 @@ class ibdl(object):
                             return variables.dict_return_codes['download']
             else:
                 return variables.dict_return_codes['skip']
-        #except:
-            #raise ErrorDownload
+        except:
+            return variables.dict_return_codes['download']
         
     def detect_site(self):
         for s, r in variables.dict_regex_table.items():
             match = re.search(r, self.current_url)
             if match:
-                self.imageboard_name = s
+                self.imageboard_name = variables.imageboard_name = s
         if self.imageboard_name is None:
             raise ErrorUrlParseError
         
@@ -292,14 +294,16 @@ class ibdl(object):
     
     def result_to_string(results):
         if len(results) > 0:
-            if results.count(_RETURN_CODES['SKIP']) > 0:
+            if results.count(variables.dict_return_codes['skip']) > 0:
                 return ('Downloaded {} file(s), {} file(s) already exists'.format(
                     results.count(variables.dict_return_codes['download']),
                     results.count(variables.dict_return_codes['skip'])))
             else:
-                return ('Downloaded {} file(s)'.format(results.count(variables.dict_return_codes['download'])))
+                return ('Downloaded {} file(s)'.format(results.count
+                    (variables.dict_return_codes['download'])))
             if results.count(variables.dict_return_codes['error']) > 0:
-                return ('Encountered {} error(s) when downloading'.format(results.count(variables.dict_return_codes['error'])))
+                return ('Encountered {} error(s) when downloading'.format(
+                    results.count(variables.dict_return_codes['error'])))
         else:
             return ('No result were found')
     
@@ -307,10 +311,7 @@ class ibdl(object):
     def download_images(self, container):   
         pool = mp.Pool()
         results = pool.starmap(self.download, zip(container[0], container[1], container[2], container[3]))
-        report(site, self.result_to_string(results))
-        
-class ErrorDownload(Exception):
-    """Raised if a file download encounters a error"""
+        report(variables.imageboard_name, self.result_to_string(results))
 
 class ErrorRequest(Exception):
     """Raised if the page returns a bad status code"""
@@ -322,17 +323,16 @@ def main():
     parser = argparse.ArgumentParser(description='Imageboard Downloader')
     parser.add_argument('urls', default=[], nargs='*', help='One or more URLs to scrape') 
     parser.add_argument('-cf', dest='cf', action='store_true', help='Force cloudflare scraper')
-        
+
     args = parser.parse_args() 
-        
+
     try:
         for url in args.urls:
-            scraper = ibdl(url)
-            scraper.download_images([1,2,3])
-        
+            scraper = ibdl(url, args.cf)
+       
     except ErrorRequest:
         print("Error requesting page")
-        
+
     except ErrorUrlParseError:
         print("Error parsing url")
 
