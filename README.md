@@ -14,6 +14,7 @@ Python based image downloader for various imageboards.
 `arhivach`
 `librechan`
 `masterchan`
+If you want more sites added please let me know.
 
 ## Usage
 ```
