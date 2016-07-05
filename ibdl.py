@@ -10,7 +10,6 @@ import urllib.request
 import shutil
 import cfscrape
 import argparse
-from builtins import classmethod
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
