@@ -257,7 +257,10 @@ class ibdl(object):
     @classmethod
     def create_dir(self, a):
         if not os.path.isdir(a):
-            os.makedirs(a)
+            try:
+                os.makedirs(a)
+            except:
+                raise ErrorCreatingDirectory
             
     @classmethod
     def const_df(self, a, b):
@@ -265,43 +268,37 @@ class ibdl(object):
         
     @classmethod
     def download(self, site, uniq, url, name=None, cf=variables.always_use_cf):
-        try:
-            cfs = cfscrape.create_scraper()
+        cfs = cfscrape.create_scraper()
     
-            if name is None:
-                name = (url.split('/')[len(url.split('/'))-1])
-            else:
-                name = (self.sanitize_filename(name))
+        if name is None: name = (url.split('/')[len(url.split('/'))-1])
+        else: name = (self.sanitize_filename(name))
             
-            if site in variables.cfs_sites:
-                cf = True
+        if site in variables.cfs_sites: cf = True
                 
-            destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
+        destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
 
-            if not os.path.exists(destination):
-                report(site, name)
-                self.create_dir(os.path.dirname(destination))
-                if cf:
-                    req = cfs.get(url, headers=variables.cfs_headers, timeout=variables.dict_general['cfs_timeout'], stream=True)
-                    if req.status_code is 200:
-                        with open(destination, 'wb') as f:
-                            req.raw.decode_content = True
-                            shutil.copyfileobj(req.raw, f)
-                            return variables.dict_return_codes['download']
-                    else:
-                        return variables.dict_return_codes['error']
+        if not os.path.exists(destination):
+            self.create_dir(os.path.dirname(destination))
+            if cf:
+                req = cfs.get(url, headers=variables.cfs_headers, timeout=variables.dict_general['cfs_timeout'], stream=True)
+                if req.status_code is 200:
+                    with open(destination, 'wb') as f:
+                        req.raw.decode_content = True
+                        shutil.copyfileobj(req.raw, f)
+                        if os.path.exists(destination): report(site, name)
+                        return variables.dict_return_codes['download']
                 else:
-                    with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
-                        try:
-                            shutil.copyfileobj(response, of)
-                        except IOError as e:
-                            return variables.dict_return_codes['error']
-                        else:
-                            return variables.dict_return_codes['download']
+                    return variables.dict_return_codes['error']
             else:
-                return variables.dict_return_codes['skip']
-        except:
-            return variables.dict_return_codes['download']
+                with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
+                    try:
+                        shutil.copyfileobj(response, of)
+                    except IOError as e:
+                        return variables.dict_return_codes['error']
+                    else:
+                        return variables.dict_return_codes['download']
+        else:
+            return variables.dict_return_codes['skip']
         
     def detect_site(self):
         for s, r in variables.dict_regex_table.items():
@@ -347,6 +344,9 @@ class ErrorRequest(Exception):
     
 class ErrorNotSupported(Exception):
     """Raised if the url can't be parsed and or identified"""
+    
+class ErrorCreatingDirectory(Exception):
+    """Raised if directory could not be created"""
 
 def main():
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
@@ -365,6 +365,9 @@ def main():
 
     except ErrorNotSupported:
         report("?", "Unsupported URL")
+        
+    except ErrorCreatingDirectory:
+        report("?", "Error creating directory, do you have the required permissions?")
 
 if __name__ == '__main__':
     main()
