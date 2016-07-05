@@ -16,6 +16,4 @@ Python based image downloader for various imageboards.
 + masterchan
 
 ## Usage
-```
-python ibdl.py https://boards.4chan.org/hr/thread/123456
-```
+`python ibdl.py https://boards.4chan.org/hr/thread/123456`
