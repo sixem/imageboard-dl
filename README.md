@@ -1,7 +1,7 @@
 # Imageboard-DL
 Python based image downloader for various imageboards.
 
-# Requirements
+# Dependencies
 + Python 3
 + BeautifulSoup4
 + [cloudflare-scrape](https://github.com/Anorov/cloudflare-scrape "cloudflare-scrape")
