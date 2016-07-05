@@ -18,10 +18,10 @@ def report(site, message):
 class variables():
     imageboard_name = None
     always_use_cf = False
+    save_directory = '{}/Downloads'.format(expanduser("~"))
     
     dict_general = {
         'cfs_timeout': 60,
-        'save_directory': '{}/Downloads'.format(expanduser("~")),
         'directory_format': '{}-{}'
         }
 
@@ -240,10 +240,13 @@ class downloaders():
 class ibdl(object):
 
     imageboard_name = None
+    destination = None
 
-    def __init__(self, site, cf):
+    def __init__(self, site, cf, dest):
         self.current_url = site
         variables.always_use_cf = cf
+        
+        if dest is not None: variables.save_directory = dest
         
         self.detect_site()
         self.download_images(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site)) 
@@ -262,7 +265,7 @@ class ibdl(object):
         return variables.dict_general['directory_format'].format(a, b)
         
     @classmethod
-    def download(self, site, uniq, url, name=None, destination=None, cf=variables.always_use_cf):
+    def download(self, site, uniq, url, name=None, cf=variables.always_use_cf):
         try:
             cfs = cfscrape.create_scraper()
     
@@ -273,11 +276,8 @@ class ibdl(object):
             
             if site in variables.cfs_sites:
                 cf = True
-        
-            if destination is None:
-                destination = ('{}/{}/{}'.format(variables.dict_general['save_directory'], uniq, name)).replace('//', '/')
-            else:
-                destination = ('{}/{}'.format(destination, name)).replace('//', '/')
+                
+            destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
 
             if not os.path.exists(destination):
                 report(site, name)
@@ -350,15 +350,16 @@ class ErrorNotSupported(Exception):
     """Raised if the url can't be parsed and or identified"""
 
 def main():
-    parser = argparse.ArgumentParser(description='Imageboard Downloader')
-    parser.add_argument('urls', default=[], nargs='*', help='One or more URLs to scrape') 
-    parser.add_argument('-cf', dest='cf', action='store_true', help='Force cloudflare scraper')
+    parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
+    parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
+    parser.add_argument('-cf', dest = 'cf', action = 'store_true', help = 'Force cloudflare scraper')
+    parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images', required = False)
 
     args = parser.parse_args() 
 
     try:
         for url in args.urls:
-            scraper = ibdl(url, args.cf)
+            scraper = ibdl(url, args.cf, args.destination)
        
     except ErrorRequest:
         report("?", "Error requesting page")
