@@ -11,6 +11,7 @@ Python based image downloader for various imageboards.
 + 2ch.hk 
 + 4chan.org
 + 4plebs.org
++ 7chan.org
 + 8ch.net
 + arhivach.org
 + librechan.net
