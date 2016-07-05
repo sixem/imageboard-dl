@@ -256,11 +256,10 @@ class ibdl(object):
     
     @classmethod
     def create_dir(self, a):
-        if not os.path.isdir(a):
-            try:
-                os.makedirs(a)
-            except:
-                raise ErrorCreatingDirectory
+        if not os.path.exists(a):
+            try: os.makedirs(a)
+            except FileExistsError: pass
+            except PermissionError: raise ErrorCreatingDirectory
             
     @classmethod
     def const_df(self, a, b):
@@ -276,7 +275,7 @@ class ibdl(object):
         if site in variables.cfs_sites: cf = True
                 
         destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
-
+        
         if not os.path.exists(destination):
             self.create_dir(os.path.dirname(destination))
             if cf:
@@ -293,6 +292,7 @@ class ibdl(object):
                 with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
                     try:
                         shutil.copyfileobj(response, of)
+                        if os.path.exists(destination): report(site, name)
                     except IOError as e:
                         return variables.dict_return_codes['error']
                     else:
@@ -303,21 +303,17 @@ class ibdl(object):
     def detect_site(self):
         for s, r in variables.dict_regex_table.items():
             match = re.search(r, self.current_url)
-            if match:
-                self.imageboard_name = variables.imageboard_name = s
-        if self.imageboard_name is None:
-            raise ErrorNotSupported
+            if match: self.imageboard_name = variables.imageboard_name = s
+        if self.imageboard_name is None: raise ErrorNotSupported
         
     def site_to_function(self, site):
         o = site
-        for s, r in variables.dict_number_converter.items():
-            o = str.replace(o, s, r)
+        for s, r in variables.dict_number_converter.items(): o = str.replace(o, s, r)
         return o
     
     @classmethod
     def fix_url(self, a):
-        if a.startswith('//'):
-            a = 'https:%s' % a
+        if a.startswith('//'): a = 'https:%s' % a
         return a
     
     def result_to_string(results):
@@ -361,13 +357,13 @@ def main():
             scraper = ibdl(url, args.cf, args.destination)
        
     except ErrorRequest:
-        report("?", "Error requesting page")
+        report("Error", "Error requesting page")
 
     except ErrorNotSupported:
-        report("?", "Unsupported URL")
+        report("Error", "Unsupported URL")
         
     except ErrorCreatingDirectory:
-        report("?", "Error creating directory, do you have the required permissions?")
+        report("Error", "Error creating directory, do you have the required permissions?")
 
 if __name__ == '__main__':
     main()
