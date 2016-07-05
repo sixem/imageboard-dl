@@ -94,17 +94,25 @@ class downloaders():
     @classmethod
     def sevenchanorg(self, a ,site="7chanorg", uniq=None):
         p = self.establish(a, site)
+        rgx = '(\(([0-9]{1,}.[0-9]{1,}[A-Z]{1,2}), ?([0-9]{1,}x[0-9]{1,}), ?(.{1,}.[a-zA-Z]{1,4})\))'
         images = p.findAll("p", {"class" : "file_size"})
         uniq = p.find("input", {"name" : "replythread"})['value'].__str__()
+        multi_images = p.findAll("img", {"class" : ["multithumb", "multithumbfirst"]})
         for image in images:
-            rm = re.search(
-                '(\(([0-9]{1,}.[0-9]{1,}[A-Z]{1,2}), ?([0-9]{1,}x[0-9]{1,}), ?(.{1,}.[a-zA-Z]{1,4})\))',
-                image.contents[2].replace('\n', ''))
             url = image.find("a")['href']
             filename = None
+            rm = re.search(rgx, image.contents[2].replace('\n', ''))
             if rm: filename = rm.group(4)
             else: filename = image.find("a").contents[0].__str__().replace('\n', '')
             values = [site, ibdl.const_df(site, uniq), url, filename]
+            for i in range(0, 4): self.box[i].append(values[i])
+        for m_image in multi_images:
+            url = m_image['src'].replace('thumb', 'src').replace('s.', '.')
+            filename = None
+            rm = re.search(rgx, m_image['title'])
+            if rm: filename = rm.group(4)
+            else: filename = m_image['title'].__str__()
+            values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
         
@@ -119,7 +127,7 @@ class downloaders():
             if ('<img') not in link.contents[0].__str__():
                 filename = ibdl.sanitize_filename(filename)
                 url = link['href'].__str__()
-                values = [site, ibdl.const_df(site, uniq), url, filename]
+                values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
                 for i in range(0, 4): self.box[i].append(values[i])
         return self.box
     
@@ -131,7 +139,7 @@ class downloaders():
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
-            values = [site, ibdl.const_df(site, uniq), url, filename]
+            values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -167,7 +175,7 @@ class downloaders():
         for f in fi:
             values = [site, variables.dict_general['directory_format'].format(site, uniq), 
                 'https://librechan.net{0}'.format(f.find("a")['href'].__str__()),
-                f.find("a").contents[0].__str__()]
+                ibdl.sanitize_filename(f.find("a").contents[0].__str__())]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
