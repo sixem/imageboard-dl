@@ -10,6 +10,7 @@ import urllib.request
 import shutil
 import cfscrape
 import argparse
+from builtins import classmethod
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
@@ -34,6 +35,7 @@ class variables():
 
     dict_regex_table = {
         '2chhk': '((https?:\/\/)2ch.hk\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '2channet': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '8chan': '((https?:\/\/)8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
@@ -82,10 +84,26 @@ class downloaders():
         try:
             self.box = [[], [], [], []]
             request = self.request(a)
-            report(site, 'Successfully retrieved page ..')
+            report(site, a)
+            report(site, 'Connected ..')
             return request
         except:
             raise ErrorRequest
+        
+    @classmethod
+    def twochannet(self, a ,site="2channet", uniq=None):
+        p = self.establish(a, site)
+        wrapper = BeautifulSoup(p, "html.parser").find("div", {"class" : "thre"})
+        uniq = wrapper.findAll("input")[0]['name'].__str__()
+        links = wrapper.findAll("a", {"target" : "_blank"})
+        for link in links:
+            filename = link.contents[0].__str__()
+            if ('<img') not in link.contents[0].__str__():
+                filename = ibdl.sanitize_filename(filename)
+                url = link['href'].__str__()
+                values = [site, ibdl.const_df(site, uniq), url, filename]
+                for i in range(0, 4): self.box[i].append(values[i])
+        return self.box
     
     @classmethod
     def masterchan(self, a, site="masterchan", uniq=None):
@@ -96,9 +114,8 @@ class downloaders():
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
-            values = [site, variables.dict_general['directory_format'].format(site, uniq), url, filename]
-            for i in range(0, 4):
-                self.box[i].append(values[i])
+            values = [site, ibdl.const_df(site, uniq), url, filename]
+            for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
     @classmethod
@@ -121,9 +138,8 @@ class downloaders():
                 if img['href'].startswith('http'):
                     url = img['href'].__str__()
             if url is not None:
-                values = [site, variables.dict_general['directory_format'].format(site, uniq), url, None]
-                for i in range(0, 4):
-                    self.box[i].append(values[i])
+                values = [site, ibdl.const_df(site, uniq), url, None]
+                for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
     @classmethod
@@ -136,15 +152,14 @@ class downloaders():
             values = [site, variables.dict_general['directory_format'].format(site, uniq), 
                 'https://librechan.net{0}'.format(f.find("a")['href'].__str__()),
                 f.find("a").contents[0].__str__()]
-            for i in range(0, 4):
-                self.box[i].append(values[i])
+            for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
     @classmethod
     def twochhk(self, a, site="2chhk"):
         p = self.establish(a, site)
         rm = re.search(variables.dict_regex_table['2chhk'], a)
-        const_url = ('{0}2ch.hk/{1}/src/{2}/'.format(rm.group(2), rm.group(3), rm.group(5)))
+        const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
         wrapper = BeautifulSoup(p, "html.parser").findAll("div", {"class" :
             ["post-wrapper", "oppost-wrapper"]})
         for post in wrapper:
@@ -152,8 +167,7 @@ class downloaders():
             for desk in desks:
                 values = [site, variables.dict_general['directory_format'].format(site, rm.group(5)),
                     const_url + desk.contents[0].__str__(), desk.contents[0].__str__()]
-                for i in range(0, 4):
-                    self.box[i].append(values[i])
+                for i in range(0, 4): self.box[i].append(values[i])
         return self.box
     
     @classmethod
@@ -167,10 +181,8 @@ class downloaders():
             for fi in file_info:
                 filename = fi.find("a").contents[0].__str__()
                 url = ibdl.fix_url(fi.find("a")['href'])
-                values = [site, variables.dict_general['directory_format'].format(site, uniq),
-                    url, filename]
-                for i in range(0, 4):
-                    self.box[i].append(values[i])
+                values = [site, ibdl.const_df(site, uniq), url, filename]
+                for i in range(0, 4): self.box[i].append(values[i])
         return self.box
     
     @classmethod
@@ -182,10 +194,8 @@ class downloaders():
         for f in fi:
             filename = f.find("span", {"class" : "unimportant"}).find("span", {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
-            values = [site, variables.dict_general['directory_format'].format(site, uniq),
-                url, filename]
-            for i in range(0, 4):
-                self.box[i].append(values[i])
+            values = [site, ibdl.const_df(site, uniq), url, filename]
+            for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
     @classmethod
@@ -195,9 +205,8 @@ class downloaders():
         image_links = wrapper.findAll("a", {"class" : "thread_image_link"})
         uniq = wrapper.find("article")['data-thread-num']
         for link in image_links:
-            values = [site, variables.dict_general['directory_format'].format(site, uniq), link['href'].__str__(), None]
-            for i in range(0, 4):
-                self.box[i].append(values[i])
+            values = [site, ibdl.const_df(site, uniq), link['href'].__str__(), None]
+            for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
     @classmethod
@@ -228,6 +237,10 @@ class ibdl(object):
     def create_dir(self, a):
         if not os.path.isdir(a):
             os.makedirs(a)
+            
+    @classmethod
+    def const_df(self, a, b):
+        return variables.dict_general['directory_format'].format(a, b)
         
     @classmethod
     def download(self, site, uniq, url, name=None, destination=None, cf=variables.always_use_cf):
@@ -243,9 +256,9 @@ class ibdl(object):
                 cf = True
         
             if destination is None:
-                destination = ('{0}/{1}/{2}'.format(variables.dict_general['save_directory'], uniq, name)).replace('//', '/')
+                destination = ('{}/{}/{}'.format(variables.dict_general['save_directory'], uniq, name)).replace('//', '/')
             else:
-                destination = ('{0}/{1}'.format(destination, name)).replace('//', '/')
+                destination = ('{}/{}'.format(destination, name)).replace('//', '/')
 
             if not os.path.exists(destination):
                 report(site, name)
@@ -278,7 +291,7 @@ class ibdl(object):
             if match:
                 self.imageboard_name = variables.imageboard_name = s
         if self.imageboard_name is None:
-            raise ErrorUrlParseError
+            raise ErrorNotSupported
         
     def site_to_function(self, site):
         o = site
@@ -316,7 +329,7 @@ class ibdl(object):
 class ErrorRequest(Exception):
     """Raised if the page returns a bad status code"""
     
-class ErrorUrlParseError(Exception):
+class ErrorNotSupported(Exception):
     """Raised if the url can't be parsed and or identified"""
 
 def main():
@@ -333,7 +346,7 @@ def main():
     except ErrorRequest:
         print("Error requesting page")
 
-    except ErrorUrlParseError:
+    except ErrorNotSupported:
         print("Error parsing url")
 
 if __name__ == '__main__':
