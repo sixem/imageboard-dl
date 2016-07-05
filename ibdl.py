@@ -38,6 +38,7 @@ class variables():
         '2channet': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        '7chanorg': '((https?:\/\/)7chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '8chan': '((https?:\/\/)8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
         'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
@@ -86,16 +87,33 @@ class downloaders():
             request = self.request(a)
             report(site, a)
             report(site, 'Connected ..')
-            return request
+            return BeautifulSoup(request, "html.parser")
         except:
             raise ErrorRequest
         
     @classmethod
+    def sevenchanorg(self, a ,site="7chanorg", uniq=None):
+        p = self.establish(a, site)
+        images = p.findAll("p", {"class" : "file_size"})
+        uniq = p.find("input", {"name" : "replythread"})['value'].__str__()
+        for image in images:
+            rm = re.search(
+                '(\(([0-9]{1,}.[0-9]{1,}[A-Z]{1,2}), ?([0-9]{1,}x[0-9]{1,}), ?(.{1,}.[a-zA-Z]{1,4})\))',
+                image.contents[2].replace('\n', ''))
+            url = image.find("a")['href']
+            filename = None
+            if rm: filename = rm.group(4)
+            else: filename = image.find("a").contents[0].__str__().replace('\n', '')
+            values = [site, ibdl.const_df(site, uniq), url, filename]
+            for i in range(0, 4): self.box[i].append(values[i])
+        return self.box
+        
+    @classmethod
     def twochannet(self, a ,site="2channet", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser").find("div", {"class" : "thre"})
-        uniq = wrapper.findAll("input")[0]['name'].__str__()
-        links = wrapper.findAll("a", {"target" : "_blank"})
+        p.find("div", {"class" : "thre"})
+        uniq = p.findAll("input")[0]['name'].__str__()
+        links = p.findAll("a", {"target" : "_blank"})
         for link in links:
             filename = link.contents[0].__str__()
             if ('<img') not in link.contents[0].__str__():
@@ -108,9 +126,8 @@ class downloaders():
     @classmethod
     def masterchan(self, a, site="masterchan", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser")
-        media = wrapper.findAll("span", {"class" : "mediaFileAttrb"})
-        uniq = wrapper.find("input", {"name" : "fromThreadNumber"})['value']
+        media = p.findAll("span", {"class" : "mediaFileAttrb"})
+        uniq = p.find("input", {"name" : "fromThreadNumber"})['value']
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
@@ -121,7 +138,7 @@ class downloaders():
     @classmethod
     def arhivach(self, a, site="arhivach", uniq=None):
         p = self.establish(a, site)
-        images = BeautifulSoup(p, "html.parser").findAll("a", {"class" : ["img_filename"]})
+        p.findAll("a", {"class" : ["img_filename"]})
         if uniq is None:
             rm = re.search(variables.dict_regex_table['arhivach'], a)
             if rm:
@@ -145,9 +162,8 @@ class downloaders():
     @classmethod
     def librechan(self, a, site="librechan", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser")
-        fi = wrapper.findAll("p", {"class" : "fileinfo"})
-        uniq = wrapper.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id'].__str__()
+        fi = p.findAll("p", {"class" : "fileinfo"})
+        uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id'].__str__()
         for f in fi:
             values = [site, variables.dict_general['directory_format'].format(site, uniq), 
                 'https://librechan.net{0}'.format(f.find("a")['href'].__str__()),
@@ -160,9 +176,9 @@ class downloaders():
         p = self.establish(a, site)
         rm = re.search(variables.dict_regex_table['2chhk'], a)
         const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
-        wrapper = BeautifulSoup(p, "html.parser").findAll("div", {"class" :
+        posts = p.findAll("div", {"class" :
             ["post-wrapper", "oppost-wrapper"]})
-        for post in wrapper:
+        for post in posts:
             desks = post.findAll("a", {"class" : ["desktop"]})
             for desk in desks:
                 values = [site, variables.dict_general['directory_format'].format(site, rm.group(5)),
@@ -173,9 +189,8 @@ class downloaders():
     @classmethod
     def fourchan(self, a, site="4chan", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser")
-        posts = wrapper.findAll("div", {"class" : ["postContainer", "opContainer"]})
-        uniq = wrapper.find("div", {"class" : "thread"})['id'].__str__()
+        posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
+        uniq = p.find("div", {"class" : "thread"})['id'].__str__()
         for post in posts:
             file_info = post.findAll("div", {"class" : ["fileText"]})
             for fi in file_info:
@@ -188,9 +203,8 @@ class downloaders():
     @classmethod
     def eightchan(self, a, site="8chan", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser")
-        fi = wrapper.findAll("p", {"class" : "fileinfo"})
-        uniq = wrapper.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id']
+        fi = p.findAll("p", {"class" : "fileinfo"})
+        uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id']
         for f in fi:
             filename = f.find("span", {"class" : "unimportant"}).find("span", {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
@@ -201,9 +215,8 @@ class downloaders():
     @classmethod
     def fourplebs(self, a, site="4plebs", uniq=None):
         p = self.establish(a, site)
-        wrapper = BeautifulSoup(p, "html.parser")
-        image_links = wrapper.findAll("a", {"class" : "thread_image_link"})
-        uniq = wrapper.find("article")['data-thread-num']
+        image_links = p.findAll("a", {"class" : "thread_image_link"})
+        uniq = p.find("article")['data-thread-num']
         for link in image_links:
             values = [site, ibdl.const_df(site, uniq), link['href'].__str__(), None]
             for i in range(0, 4): self.box[i].append(values[i])
@@ -213,10 +226,8 @@ class downloaders():
     def request(self, url):
         cfs = cfscrape.create_scraper()
         request = cfs.get(url, headers = variables.cfs_headers, timeout = variables.dict_general['cfs_timeout'])
-        if request.status_code is 200:
-            return request.text
-        else:
-            raise ErrorRequest
+        if request.status_code is 200: return request.text
+        else: raise ErrorRequest
 
 class ibdl(object):
 
@@ -311,14 +322,12 @@ class ibdl(object):
                 return ('Downloaded {} file(s), {} file(s) already exists'.format(
                     results.count(variables.dict_return_codes['download']),
                     results.count(variables.dict_return_codes['skip'])))
-            else:
-                return ('Downloaded {} file(s)'.format(results.count
+            else: return ('Downloaded {} file(s)'.format(results.count
                     (variables.dict_return_codes['download'])))
             if results.count(variables.dict_return_codes['error']) > 0:
                 return ('Encountered {} error(s) when downloading'.format(
                     results.count(variables.dict_return_codes['error'])))
-        else:
-            return ('No result were found')
+        else: return ('No result were found')
     
     @classmethod
     def download_images(self, container):   
@@ -344,10 +353,10 @@ def main():
             scraper = ibdl(url, args.cf)
        
     except ErrorRequest:
-        print("Error requesting page")
+        report("?", "Error requesting page")
 
     except ErrorNotSupported:
-        print("Error parsing url")
+        report("?", "Unsupported URL")
 
 if __name__ == '__main__':
     main()
