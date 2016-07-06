@@ -10,6 +10,7 @@ import urllib.request
 import shutil
 import cfscrape
 import argparse
+import sys
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
@@ -201,7 +202,9 @@ class downloaders():
         for post in posts:
             file_info = post.findAll("div", {"class" : ["fileText"]})
             for fi in file_info:
-                filename = fi.find("a").contents[0].__str__()
+                file_a = fi.find("a")
+                filename = file_a.contents[0].__str__()
+                if file_a.has_attr('title'): filename = file_a['title'].__str__()
                 url = ibdl.fix_url(fi.find("a")['href'])
                 values = [site, ibdl.const_df(site, uniq), url, filename]
                 for i in range(0, 4): self.box[i].append(values[i])
@@ -248,7 +251,7 @@ class ibdl(object):
         if dest is not None: variables.save_directory = dest
         
         self.detect_site()
-        self.download_images(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site)) 
+        self.download_images(self.fix_duplicate_names(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site)))  
 
     @classmethod
     def sanitize_filename(self, fn):
@@ -258,8 +261,8 @@ class ibdl(object):
     def create_dir(self, a):
         if not os.path.exists(a):
             try: os.makedirs(a)
-            except FileExistsError: pass
             except PermissionError: raise ErrorCreatingDirectory
+            except: pass
             
     @classmethod
     def const_df(self, a, b):
@@ -316,7 +319,20 @@ class ibdl(object):
         if a.startswith('//'): a = 'https:%s' % a
         return a
     
-    def result_to_string(results):
+    @classmethod
+    def fix_duplicate_names(self, lst, ind=3):
+        temp = []
+        for i, x in enumerate(lst[ind]):
+            if lst[ind][i] not in temp:
+                temp.append(lst[ind][i])
+            else:
+                file = os.path.splitext(lst[ind][i])
+                temp.append(file[0]+lst[ind].count(lst[ind][i]).__str__()+file[1])
+        lst[ind] = temp
+        return lst
+    
+    @classmethod
+    def result_to_string(self, results):
         if len(results) > 0:
             if results.count(variables.dict_return_codes['skip']) > 0:
                 return ('Downloaded {} file(s), {} file(s) already exists'.format(
