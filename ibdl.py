@@ -10,7 +10,6 @@ import urllib.request
 import shutil
 import cfscrape
 import argparse
-import sys
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
@@ -38,7 +37,7 @@ class variables():
         '2channet': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        '7chanorg': '((https?:\/\/)7chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '7chanorg': '((https?:\/\/)7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '8chan': '((https?:\/\/)8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
         'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
@@ -86,7 +85,7 @@ class downloaders():
             self.box = [[], [], [], []]
             request = self.request(a)
             report(site, a)
-            report(site, 'Connected ..')
+            report(site, 'Connection established ..')
             return BeautifulSoup(request, "html.parser")
         except:
             raise ErrorRequest
