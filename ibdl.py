@@ -16,7 +16,7 @@ def report(site, message):
 
 class variables():
     imageboard_name = None
-    always_use_cf = False
+    use_cf = False
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     dict_general = {
@@ -74,6 +74,39 @@ class variables():
         'download': 3,
         'error': 4
         }
+
+class utils():
+    def url_to_digits(str, cutoff=0):
+        if str is None or str == '':
+            return 0
+        out_number = ''
+        for ele in str:
+            if ele.isdigit():
+                out_number += ele
+        return out_number[cutoff:]
+    
+    def fix_url(a):
+        if a.startswith('//'): a = 'https:%s' % a
+        return a
+
+    def const_df(a, b):
+        return variables.dict_general['directory_format'].format(a, b)
+    
+    def sanitize_filename(fn):
+        return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
+    
+    def result_to_string(results):
+        if len(results) > 0:
+            if results.count(variables.dict_return_codes['skip']) > 0:
+                return ('Downloaded {} file(s), {} file(s) already exists'.format(
+                    results.count(variables.dict_return_codes['download']),
+                    results.count(variables.dict_return_codes['skip'])))
+            else: return ('Downloaded {} file(s)'.format(results.count
+                    (variables.dict_return_codes['download'])))
+            if results.count(variables.dict_return_codes['error']) > 0:
+                return ('Encountered {} error(s) when downloading'.format(
+                    results.count(variables.dict_return_codes['error'])))
+        else: return ('No result were found')
     
 class downloaders():
     
@@ -84,7 +117,6 @@ class downloaders():
         try:
             self.box = [[], [], [], []]
             request = self.request(a)
-            report(site, a)
             report(site, 'Connection established ..')
             return BeautifulSoup(request, "html.parser")
         except:
@@ -103,7 +135,7 @@ class downloaders():
             rm = re.search(rgx, image.contents[2].replace('\n', ''))
             if rm: filename = rm.group(4)
             else: filename = image.find("a").contents[0].__str__().replace('\n', '')
-            values = [site, ibdl.const_df(site, uniq), url, filename]
+            values = [site, utils.const_df(site, uniq), url, filename]
             for i in range(0, 4): self.box[i].append(values[i])
         for m_image in multi_images:
             url = m_image['src'].replace('thumb', 'src').replace('s.', '.')
@@ -111,7 +143,7 @@ class downloaders():
             rm = re.search(rgx, m_image['title'])
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
-            values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
+            values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
         
@@ -119,14 +151,15 @@ class downloaders():
     def twochannet(self, a ,site="2channet", uniq=None):
         p = self.establish(a, site)
         p.find("div", {"class" : "thre"})
-        uniq = p.findAll("input")[0]['name'].__str__()
+        uniq = p.find("input", {"name" : "resto"})['value'].__str__()
+        if len(uniq) < 1 and uniq.isdigit() is False: uniq = utils.url_to_digits(a, 1)
         links = p.findAll("a", {"target" : "_blank"})
         for link in links:
             filename = link.contents[0].__str__()
-            if ('<img') not in link.contents[0].__str__():
-                filename = ibdl.sanitize_filename(filename)
+            if ('<img') not in link.contents[0].__str__() and ('src') in link['href'].__str__():
+                filename = utils.sanitize_filename(filename)
                 url = link['href'].__str__()
-                values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
+                values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
                 for i in range(0, 4): self.box[i].append(values[i])
         return self.box
     
@@ -138,7 +171,7 @@ class downloaders():
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
-            values = [site, ibdl.const_df(site, uniq), url, ibdl.sanitize_filename(filename)]
+            values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -162,7 +195,7 @@ class downloaders():
                 if img['href'].startswith('http'):
                     url = img['href'].__str__()
             if url is not None:
-                values = [site, ibdl.const_df(site, uniq), url, None]
+                values = [site, utils.const_df(site, uniq), url, None]
                 for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -174,7 +207,7 @@ class downloaders():
         for f in fi:
             values = [site, variables.dict_general['directory_format'].format(site, uniq), 
                 'https://librechan.net{0}'.format(f.find("a")['href'].__str__()),
-                ibdl.sanitize_filename(f.find("a").contents[0].__str__())]
+                utils.sanitize_filename(f.find("a").contents[0].__str__())]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -204,8 +237,8 @@ class downloaders():
                 file_a = fi.find("a")
                 filename = file_a.contents[0].__str__()
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
-                url = ibdl.fix_url(fi.find("a")['href'])
-                values = [site, ibdl.const_df(site, uniq), url, filename]
+                url = utils.fix_url(fi.find("a")['href'])
+                values = [site, utils.const_df(site, uniq), url, filename]
                 for i in range(0, 4): self.box[i].append(values[i])
         return self.box
     
@@ -217,7 +250,7 @@ class downloaders():
         for f in fi:
             filename = f.find("span", {"class" : "unimportant"}).find("span", {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
-            values = [site, ibdl.const_df(site, uniq), url, filename]
+            values = [site, utils.const_df(site, uniq), url, filename]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -227,7 +260,7 @@ class downloaders():
         image_links = p.findAll("a", {"class" : "thread_image_link"})
         uniq = p.find("article")['data-thread-num']
         for link in image_links:
-            values = [site, ibdl.const_df(site, uniq), link['href'].__str__(), None]
+            values = [site, utils.const_df(site, uniq), link['href'].__str__(), None]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -240,39 +273,27 @@ class downloaders():
 
 class ibdl(object):
 
-    imageboard_name = None
-    destination = None
+    imageboard_name = destination = None
 
-    def __init__(self, site, cf, dest):
+    def __init__(self, site, dest, dirn, cf):
         self.current_url = site
-        variables.always_use_cf = cf
-        
-        if dest is not None: variables.save_directory = dest
+        variables.use_cf = cf
+        if dest is not None: variables.save_directory = args.destination
         
         self.detect_site()
-        self.download_images(self.fix_duplicate_names(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site)))  
-
-    @classmethod
-    def sanitize_filename(self, fn):
-        return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
+        self.download_images(self.modify_list(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site), cdir=dirn))  
     
-    @classmethod
     def create_dir(self, a):
         if not os.path.exists(a):
             try: os.makedirs(a)
             except PermissionError: raise ErrorCreatingDirectory
             except: pass
-            
-    @classmethod
-    def const_df(self, a, b):
-        return variables.dict_general['directory_format'].format(a, b)
         
-    @classmethod
-    def download(self, site, uniq, url, name=None, cf=variables.always_use_cf):
+    def download(self, site, uniq, url, name=None, cf=variables.use_cf):
         cfs = cfscrape.create_scraper()
     
         if name is None: name = (url.split('/')[len(url.split('/'))-1])
-        else: name = (self.sanitize_filename(name))
+        else: name = (utils.sanitize_filename(name))
             
         if site in variables.cfs_sites: cf = True
                 
@@ -305,7 +326,9 @@ class ibdl(object):
     def detect_site(self):
         for s, r in variables.dict_regex_table.items():
             match = re.search(r, self.current_url)
-            if match: self.imageboard_name = variables.imageboard_name = s
+            if match:
+                self.imageboard_name = variables.imageboard_name = s
+                report(s, self.current_url)
         if self.imageboard_name is None: raise ErrorNotSupported
         
     def site_to_function(self, site):
@@ -313,42 +336,25 @@ class ibdl(object):
         for s, r in variables.dict_number_converter.items(): o = str.replace(o, s, r)
         return o
     
-    @classmethod
-    def fix_url(self, a):
-        if a.startswith('//'): a = 'https:%s' % a
-        return a
-    
-    @classmethod
-    def fix_duplicate_names(self, lst, ind=3):
-        temp = []
+    def modify_list(self, lst, cdir=None, ind=3, temp=[]):
+        if cdir is not None:
+            for c, q in enumerate(lst[1]):
+                lst[1][c] = cdir
+        p = 1
         for i, x in enumerate(lst[ind]):
             if lst[ind][i] not in temp:
                 temp.append(lst[ind][i])
             else:
                 file = os.path.splitext(lst[ind][i])
-                temp.append(file[0]+lst[ind].count(lst[ind][i]).__str__()+file[1])
+                temp.append(file[0]+str(p)+file[1])
+                p += 1
         lst[ind] = temp
         return lst
     
-    @classmethod
-    def result_to_string(self, results):
-        if len(results) > 0:
-            if results.count(variables.dict_return_codes['skip']) > 0:
-                return ('Downloaded {} file(s), {} file(s) already exists'.format(
-                    results.count(variables.dict_return_codes['download']),
-                    results.count(variables.dict_return_codes['skip'])))
-            else: return ('Downloaded {} file(s)'.format(results.count
-                    (variables.dict_return_codes['download'])))
-            if results.count(variables.dict_return_codes['error']) > 0:
-                return ('Encountered {} error(s) when downloading'.format(
-                    results.count(variables.dict_return_codes['error'])))
-        else: return ('No result were found')
-    
-    @classmethod
-    def download_images(self, container):   
+    def download_images(self, box):   
         pool = mp.Pool()
-        results = pool.starmap(self.download, zip(container[0], container[1], container[2], container[3]))
-        report(variables.imageboard_name, self.result_to_string(results))
+        results = pool.starmap(self.download, zip(box[0], box[1], box[2], box[3]))
+        report(variables.imageboard_name, utils.result_to_string(results))
 
 class ErrorRequest(Exception):
     """Raised if the page returns a bad status code"""
@@ -363,13 +369,14 @@ def main():
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
     parser.add_argument('-cf', dest = 'cf', action = 'store_true', help = 'Force cloudflare scraper')
-    parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images', required = False)
+    parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
+    parser.add_argument('-dd', dest = 'directory_name', default = None, help = 'Where to save images (Directory name)', required = False)
 
     args = parser.parse_args() 
 
     try:
         for url in args.urls:
-            scraper = ibdl(url, args.cf, args.destination)
+            scraper = ibdl(url, args.destination, args.directory_name, args.cf)
        
     except ErrorRequest:
         report("Error", "Error requesting page")
