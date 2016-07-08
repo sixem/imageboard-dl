@@ -248,7 +248,8 @@ class downloaders():
         fi = p.findAll("p", {"class" : "fileinfo"})
         uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id']
         for f in fi:
-            filename = f.find("span", {"class" : "unimportant"}).find("span", {"class" : "postfilename"}).contents[0].__str__()
+            filename = f.find("span", {"class" : "unimportant"}).find("span",
+                {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
             values = [site, utils.const_df(site, uniq), url, filename]
             for i in range(0, 4): self.box[i].append(values[i])
@@ -267,7 +268,8 @@ class downloaders():
     @classmethod
     def request(self, url):
         cfs = cfscrape.create_scraper()
-        request = cfs.get(url, headers = variables.cfs_headers, timeout = variables.dict_general['cfs_timeout'])
+        request = cfs.get(url, headers = variables.cfs_headers,
+            timeout = variables.dict_general['cfs_timeout'])
         if request.status_code is 200: return request.text
         else: raise ErrorRequest
 
@@ -281,7 +283,8 @@ class ibdl(object):
         if dest is not None: variables.save_directory = args.destination
         
         self.detect_site()
-        self.download_images(self.modify_list(getattr(downloaders, self.site_to_function(self.imageboard_name))(a=site), cdir=dirn))  
+        self.download_images(self.modify_list(getattr(downloaders, 
+            self.site_to_function(self.imageboard_name))(a=site), cdir=dirn))  
     
     def create_dir(self, a):
         if not os.path.exists(a):
@@ -370,7 +373,7 @@ def main():
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
     parser.add_argument('-cf', dest = 'cf', action = 'store_true', help = 'Force cloudflare scraper')
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
-    parser.add_argument('-dd', dest = 'directory_name', default = None, help = 'Where to save images (Directory name)', required = False)
+    parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
 
     args = parser.parse_args() 
 
