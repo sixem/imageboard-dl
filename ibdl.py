@@ -41,7 +41,8 @@ class variables():
         '8chan': '((https?:\/\/)8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
         'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))'
+        'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        'imgur:album': 'https?:\/\/imgur.com\/a\/([0-9A-Za-z]{1,})'
         }
 
     cfs_sites = [
@@ -66,6 +67,7 @@ class variables():
         '8': 'eight',
         '9': 'nine',
         '10': 'ten',
+        ':': 'col'
         }
 
     dict_return_codes = {
@@ -88,6 +90,9 @@ class utils():
     def fix_url(a):
         if a.startswith('//'): a = 'https:%s' % a
         return a
+
+    def get_filename_from_url(a):
+        return a.split('/')[len(a.split('/'))-1]
 
     def const_df(a, b):
         return variables.dict_general['directory_format'].format(a, b)
@@ -121,6 +126,20 @@ class downloaders():
             return BeautifulSoup(request, "html.parser")
         except:
             raise ErrorRequest
+        
+    @classmethod
+    def imgurcolalbum(self, a ,site="imgur:album", uniq=None):
+        p = self.establish(a, site)
+        images = p.findAll("div", {"class" : "post-image"})
+        match = re.search(variables.dict_regex_table['imgur:album'], a)
+        if match: uniq = match.group(1)
+        for i in images:
+            source = i.findAll(["img", "source"])
+            for x in source:
+                url = utils.fix_url(x['src'].__str__())
+                values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
+                for i in range(0, 4): self.box[i].append(values[i])
+        return self.box
         
     @classmethod
     def sevenchanorg(self, a ,site="7chanorg", uniq=None):
@@ -195,7 +214,7 @@ class downloaders():
                 if img['href'].startswith('http'):
                     url = img['href'].__str__()
             if url is not None:
-                values = [site, utils.const_df(site, uniq), url, None]
+                values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
                 for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
@@ -261,7 +280,8 @@ class downloaders():
         image_links = p.findAll("a", {"class" : "thread_image_link"})
         uniq = p.find("article")['data-thread-num']
         for link in image_links:
-            values = [site, utils.const_df(site, uniq), link['href'].__str__(), None]
+            url = link['href'].__str__()
+            values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
             for i in range(0, 4): self.box[i].append(values[i])
         return self.box
 
