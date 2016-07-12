@@ -6,17 +6,20 @@ from os.path import expanduser
 import multiprocessing as mp
 import re
 import os
+import json
 import urllib.request
+import urllib.parse
+import requests
 import shutil
 import cfscrape
 import argparse
+import math
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
 
 class variables():
     imageboard_name = None
-    use_cf = False
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     dict_general = {
@@ -42,15 +45,10 @@ class variables():
         'arhivach': '((https?:\/\/)arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
         'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        'imgur:album': 'https?:\/\/imgur.com\/a\/([0-9A-Za-z]{1,})'
+        'imgur:album': 'https?:\/\/imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
+        'photbucket:album': '(https?:\/\/([a-zA-Z0-9]{1,10}).photobucket.com\/user\/([a-zA-Z0-9]{1,})\/library\/([a-zA-Z0-9 %]{1,}))',
+        'xhamster:gallery': '(https?:\/\/xhamster.com\/photos\/gallery\/[0-9]{1,}\/.*.html)'
         }
-
-    cfs_sites = [
-        'arhivach',
-        '8chan',
-        '4plebs',
-        'masterchan'
-        ]
 
     possible_reasons = {
         403: ['Are you using a VPN / Proxy?']
@@ -67,7 +65,7 @@ class variables():
         '8': 'eight',
         '9': 'nine',
         '10': 'ten',
-        ':': 'col'
+        ':': 'x'
         }
 
     dict_return_codes = {
@@ -76,6 +74,48 @@ class variables():
         'download': 3,
         'error': 4
         }
+    
+class download():
+     
+    download_type = {
+        'generic': 1,
+        'cloudflare': 2,
+        'content-disposition': 3
+        }
+    
+    def generic(site, url, destination, name, x='generic'):
+        with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
+            try:
+                shutil.copyfileobj(response, of)
+                if os.path.exists(destination): report('download', name)
+            except IOError as e: return variables.dict_return_codes['error']
+            else: return variables.dict_return_codes['download']
+        
+    def cloudflare(site, url, destination, name, x='cloudflare'):
+        cfs = cfscrape.create_scraper()
+        req = cfs.get(url, headers=variables.cfs_headers, 
+                     timeout=variables.dict_general['cfs_timeout'], stream=True)
+        if req.status_code is 200:
+            with open(destination, 'wb') as f:
+                req.raw.decode_content = True
+                shutil.copyfileobj(req.raw, f)
+                if os.path.exists(destination):
+                    report('download', name)
+                    return variables.dict_return_codes['download']
+                else: return variables.dict_return_codes['error']
+        else: return variables.dict_return_codes['error']
+        
+    def contentdisposition(site, url, destination, name, x='content-disposition'):
+        req = requests.get(url, headers=variables.cfs_headers, 
+                           timeout=variables.dict_general['cfs_timeout'])
+        if req.status_code == 200:
+            rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
+            if rm:
+                open(destination, 'wb').write(req.content)
+                if os.path.exists(destination):
+                    report('download', name)
+                    return variables.dict_return_codes['download']
+            else: return variables.dict_return_codes['error']
 
 class utils():
     def url_to_digits(str, cutoff=0):
@@ -98,47 +138,123 @@ class utils():
         return variables.dict_general['directory_format'].format(a, b)
     
     def sanitize_filename(fn):
-        return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.']).rstrip()
+        return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.' or c=='_']).rstrip()
+
+    def get_json(js):
+        try:
+            jso = json.loads(js)
+            return jso
+        except: raise ErrorParsingJson
     
     def result_to_string(results):
+        out = ''
         if len(results) > 0:
             if results.count(variables.dict_return_codes['skip']) > 0:
-                return ('Downloaded {} file(s), {} file(s) already exists'.format(
+                out += ('Downloaded {} file(s), {} file(s) already exists'.format(
                     results.count(variables.dict_return_codes['download']),
                     results.count(variables.dict_return_codes['skip'])))
-            else: return ('Downloaded {} file(s)'.format(results.count
+            else: out += ('Downloaded {} file(s)'.format(results.count
                     (variables.dict_return_codes['download'])))
             if results.count(variables.dict_return_codes['error']) > 0:
-                return ('Encountered {} error(s) when downloading'.format(
+                out += (' and encountered {} error(s) when downloading'.format(
                     results.count(variables.dict_return_codes['error'])))
+            return out
         else: return ('No result were found')
+        
+    @staticmethod
+    def queue(site, uniq, url, filename, downloader):
+        values = [site, utils.const_df(site, uniq), url,
+                   utils.sanitize_filename(filename), downloader]
+        for i in range(0, 5): scrapers.box[i].append(values[i])
     
-class downloaders():
+class scrapers():
     
-    box = [[], [], [], []]
+    box = [[], [], [], [], []]
     
     @classmethod
-    def establish(self, a, site, uniq=None):
+    def establish(self, a, site, v=True, bs=True, rb=True):
         try:
-            self.box = [[], [], [], []]
             request = self.request(a)
-            report(site, 'Connection established ..')
-            return BeautifulSoup(request, "html.parser")
-        except:
-            raise ErrorRequest
+            if rb is True:
+                self.box = [[], [], [], [], []]
+            if v is True: report(site, 'Connection established ..')
+            if bs is True: return BeautifulSoup(request, "html.parser")
+            else: return request
+        except: raise ErrorRequest
+ 
+    @classmethod
+    def xhamsterxgallery(self, a, site="xhamster:gallery", uniq=None, pages=1):
+        p = self.establish(a, site)
+        uniq = utils.url_to_digits(a)
+        data = p.__str__()
+        base_url = p.find("link", {"hreflang" : ["en", "ru", "de", "pl", "es", "fr"]})['href'].__str__()
+        pager = p.find("div", {"class" : "pager"}).find("a", {"class" : "last"})
+        if pager:
+            rm = re.search('(\?page=([0-9]{1,}))', pager.__str__())
+            if rm: pages = int(rm.group(2))
+        report(site, 'Fetching Page 1 ..')
+        for page in range(2, pages+1):
+            report(site, 'Fetching Page {} ..'.format(page))
+            n_url = '{}?page={}'.format(base_url, page)
+            data += self.establish(n_url, site, v=False, bs=False, rb=False)
+        items = BeautifulSoup(data, "html.parser").findAll("div", {"class" : "iItem"})
+        for item in items:
+            rm = re.search('i_([0-9]{1,3})([0-9]{3})([0-9]{3})', item['id'].__str__())
+            if rm:
+                link = item.find("img", {"class" : "vert"})['src'].__str__()
+                extension = link.split('.')[len(link.split('.'))-1]
+                filename = item['id'].__str__() + '.' + extension
+                data = [rm.group(1), rm.group(2), rm.group(3)]
+                for i, x in enumerate(data):
+                    if len(x) < 3:
+                        data[i] = (('0' * (3-len(x))) + data[i])         
+                url = 'http://ep.xhamster.com/000/{}/{}/{}_1000.{}'.format(data[0], data[1], data[2], extension)
+                utils.queue(site, uniq, url, filename, download.download_type['generic'])
+        return self.box
         
     @classmethod
-    def imgurcolalbum(self, a ,site="imgur:album", uniq=None):
+    def photbucketxalbum(self, a ,site="photobucket:album", uniq=None):
+        p = self.establish(a, site, bs=False)
+        rgx_js = '({"contentFetchUrl"(.*)linkerMode":null})'
+        rm = re.search(rgx_js, p.__str__().rstrip('\r\n'))
+        if rm:        
+            jso = utils.get_json((rm.group(1)))
+            total = jso['total']
+            uniq = jso['albumName']
+            report(site, 'Album Name: {}'.format(uniq))
+            collected = jso['pageSize']
+            pages = math.ceil(int(jso['total']) / int(jso['pageSize']))
+            report(site, 'Page: {} (Fetched: {})'.format(jso['pageNumber'], jso['pageSize']))
+            for item in jso['items']['objects']:
+                url = ('http://{}.photobucket.com/component/Download-File?file={}'
+                       .format(item['subdomain'], urllib.parse.unquote(item['rawpath'])))
+                utils.queue(site, uniq, url, item['name'].__str__(), download.download_type['content-disposition'])
+            for page in range(2, pages+1):
+                p = self.establish(a, site, False, False, False)
+                rm = re.search(rgx_js, p.__str__().rstrip('\r\n'))
+                if rm:
+                    jso = utils.get_json((rm.group(1)))
+                    collected += int(jso['pageSize'])
+                    report(site, 'Page: {} (Fetched: {})'.format(page, collected, total))
+                    for item in jso['items']['objects']:
+                        url = ('http://{}.photobucket.com/component/Download-File?file={}'
+                               .format(item['subdomain'], urllib.parse.unquote(item['rawpath'])))
+                        utils.queue(site, uniq, url, filename, download.download_type['content-disposition'])
+                else: raise ErrorParsingJson
+        else: raise ErrorParsingJson
+        return self.box
+        
+    @classmethod
+    def imgurxalbum(self, a ,site="imgur:album", uniq=None):
         p = self.establish(a, site)
         images = p.findAll("div", {"class" : "post-image"})
         match = re.search(variables.dict_regex_table['imgur:album'], a)
-        if match: uniq = match.group(1)
+        if match: uniq = match.group(2)
         for i in images:
             source = i.findAll(["img", "source"])
             for x in source:
                 url = utils.fix_url(x['src'].__str__())
-                values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
-                for i in range(0, 4): self.box[i].append(values[i])
+                utils.queue(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
         return self.box
         
     @classmethod
@@ -162,8 +278,7 @@ class downloaders():
             rm = re.search(rgx, m_image['title'])
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
-            values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
-            for i in range(0, 4): self.box[i].append(values[i])
+            utils.queue(site, uniq, url, filename, download.download_type['generic'])
         return self.box
         
     @classmethod
@@ -178,8 +293,7 @@ class downloaders():
             if ('<img') not in link.contents[0].__str__() and ('src') in link['href'].__str__():
                 filename = utils.sanitize_filename(filename)
                 url = link['href'].__str__()
-                values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
-                for i in range(0, 4): self.box[i].append(values[i])
+                utils.queue(site, uniq, url, filename, download.download_type['content-disposition'])
         return self.box
     
     @classmethod
@@ -190,14 +304,13 @@ class downloaders():
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
-            values = [site, utils.const_df(site, uniq), url, utils.sanitize_filename(filename)]
-            for i in range(0, 4): self.box[i].append(values[i])
+            utils.queue(site, uniq, url, filename, download.download_type['generic'])
         return self.box
 
     @classmethod
     def arhivach(self, a, site="arhivach", uniq=None):
         p = self.establish(a, site)
-        p.findAll("a", {"class" : ["img_filename"]})
+        images = p.findAll("a", {"class" : ["img_filename"]})
         if uniq is None:
             rm = re.search(variables.dict_regex_table['arhivach'], a)
             if rm:
@@ -214,8 +327,7 @@ class downloaders():
                 if img['href'].startswith('http'):
                     url = img['href'].__str__()
             if url is not None:
-                values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
-                for i in range(0, 4): self.box[i].append(values[i])
+                utils.queue(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
         return self.box
 
     @classmethod
@@ -224,25 +336,25 @@ class downloaders():
         fi = p.findAll("p", {"class" : "fileinfo"})
         uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id'].__str__()
         for f in fi:
-            values = [site, variables.dict_general['directory_format'].format(site, uniq), 
-                'https://librechan.net{0}'.format(f.find("a")['href'].__str__()),
-                utils.sanitize_filename(f.find("a").contents[0].__str__())]
-            for i in range(0, 4): self.box[i].append(values[i])
+            url = 'https://librechan.net{0}'.format(f.find("a")['href'].__str__())
+            filename = f.find("a").contents[0].__str__()
+            utils.queue(site, uniq, url, filename, download.download_type['generic'])
         return self.box
 
     @classmethod
-    def twochhk(self, a, site="2chhk"):
+    def twochhk(self, a, site="2chhk", uniq=None):
         p = self.establish(a, site)
         rm = re.search(variables.dict_regex_table['2chhk'], a)
+        uniq = rm.group(5)
         const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
         posts = p.findAll("div", {"class" :
             ["post-wrapper", "oppost-wrapper"]})
         for post in posts:
             desks = post.findAll("a", {"class" : ["desktop"]})
             for desk in desks:
-                values = [site, variables.dict_general['directory_format'].format(site, rm.group(5)),
-                    const_url + desk.contents[0].__str__(), desk.contents[0].__str__()]
-                for i in range(0, 4): self.box[i].append(values[i])
+                url = const_url + desk.contents[0].__str__()
+                filename = desk.contents[0].__str__()
+                utils.queue(site, uniq, url, filename, download.download_type['generic'])
         return self.box
     
     @classmethod
@@ -297,13 +409,12 @@ class ibdl(object):
 
     imageboard_name = destination = None
 
-    def __init__(self, site, dest, dirn, cf):
+    def __init__(self, site, dest, dirn):
         self.current_url = site
-        variables.use_cf = cf
         if dest is not None: variables.save_directory = args.destination
         
         self.detect_site()
-        self.download_images(self.modify_list(getattr(downloaders, 
+        self.download_images(self.modify_list(getattr(scrapers, 
             self.site_to_function(self.imageboard_name))(a=site), cdir=dirn))  
     
     def create_dir(self, a):
@@ -312,39 +423,20 @@ class ibdl(object):
             except PermissionError: raise ErrorCreatingDirectory
             except: pass
         
-    def download(self, site, uniq, url, name=None, cf=variables.use_cf):
-        cfs = cfscrape.create_scraper()
-    
+    def download(self, site, uniq, url, name=None, dtype=download.download_type['generic']):
+
         if name is None: name = (url.split('/')[len(url.split('/'))-1])
         else: name = (utils.sanitize_filename(name))
-            
-        if site in variables.cfs_sites: cf = True
                 
         destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
         
         if not os.path.exists(destination):
             self.create_dir(os.path.dirname(destination))
-            if cf:
-                req = cfs.get(url, headers=variables.cfs_headers, timeout=variables.dict_general['cfs_timeout'], stream=True)
-                if req.status_code is 200:
-                    with open(destination, 'wb') as f:
-                        req.raw.decode_content = True
-                        shutil.copyfileobj(req.raw, f)
-                        if os.path.exists(destination): report(site, name)
-                        return variables.dict_return_codes['download']
-                else:
-                    return variables.dict_return_codes['error']
-            else:
-                with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
-                    try:
-                        shutil.copyfileobj(response, of)
-                        if os.path.exists(destination): report(site, name)
-                    except IOError as e:
-                        return variables.dict_return_codes['error']
-                    else:
-                        return variables.dict_return_codes['download']
-        else:
-            return variables.dict_return_codes['skip']
+            if dtype == download.download_type['cloudflare']: return download.cloudflare(site, url, destination, name)
+            elif dtype == download.download_type['generic']: return download.generic(site, url, destination, name)
+            elif dtype == download.download_type['content-disposition']: return download.contentdisposition(site, url, destination, name)
+            else: return download.generic(site, url, destination, name)
+        else: return variables.dict_return_codes['skip']
         
     def detect_site(self):
         for s, r in variables.dict_regex_table.items():
@@ -352,32 +444,36 @@ class ibdl(object):
             if match:
                 self.imageboard_name = variables.imageboard_name = s
                 report(s, self.current_url)
-        if self.imageboard_name is None: raise ErrorNotSupported
+        if self.imageboard_name is None: raise ErrorNotSupported('test')
         
     def site_to_function(self, site):
-        o = site
-        for s, r in variables.dict_number_converter.items(): o = str.replace(o, s, r)
-        return o
+        for s, r in variables.dict_number_converter.items(): site = str.replace(site, s, r)
+        return site
     
-    def modify_list(self, lst, cdir=None, ind=3, temp=[]):
+    def modify_list(self, lst, cdir=None):
+        temp = []
         if cdir is not None:
             for c, q in enumerate(lst[1]):
                 lst[1][c] = cdir
         p = 1
-        for i, x in enumerate(lst[ind]):
-            if lst[ind][i] not in temp:
-                temp.append(lst[ind][i])
+        for i, x in enumerate(lst[3]):
+            if lst[3][i] not in temp:
+                temp.append(lst[3][i])
             else:
-                file = os.path.splitext(lst[ind][i])
+                file = os.path.splitext(lst[3][i])
                 temp.append(file[0]+str(p)+file[1])
                 p += 1
-        lst[ind] = temp
+        lst[3] = temp
         return lst
     
-    def download_images(self, box):   
+    def download_images(self, box):
+        for value, key in download.download_type.items():
+            if len(box[4]) > 0: 
+                if key == box[4][0]:
+                    report('download', 'Using the {} downloader.'.format(value))
         pool = mp.Pool()
-        results = pool.starmap(self.download, zip(box[0], box[1], box[2], box[3]))
-        report(variables.imageboard_name, utils.result_to_string(results))
+        results = pool.starmap(self.download, zip(box[0], box[1], box[2], box[3], box[4]))
+        report('download', utils.result_to_string(results))
 
 class ErrorRequest(Exception):
     """Raised if the page returns a bad status code"""
@@ -387,28 +483,32 @@ class ErrorNotSupported(Exception):
     
 class ErrorCreatingDirectory(Exception):
     """Raised if directory could not be created"""
+    
+class ErrorParsingJson(Exception):
+    """Raised if encountering an error when extracting and or parsing a json object"""
 
 def main():
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
-    parser.add_argument('-cf', dest = 'cf', action = 'store_true', help = 'Force cloudflare scraper')
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
     parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
 
     args = parser.parse_args() 
 
     try:
-        for url in args.urls:
-            scraper = ibdl(url, args.destination, args.directory_name, args.cf)
+        for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
        
     except ErrorRequest:
-        report("Error", "Error requesting page")
+        report("error", "Error requesting page")
 
     except ErrorNotSupported:
-        report("Error", "Unsupported URL")
+        report("error", "Unsupported URL")
         
     except ErrorCreatingDirectory:
-        report("Error", "Error creating directory, do you have the required permissions?")
+        report("error", "Error creating directory, do you have the required permissions?")
+        
+    except ErrorParsingJson:
+        report("error", "Error parsing JSON")
 
 if __name__ == '__main__':
     main()
