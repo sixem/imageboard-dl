@@ -7,7 +7,6 @@ import multiprocessing as mp
 import re
 import os
 import json
-import urllib.request
 import urllib.parse
 import requests
 import shutil
@@ -83,13 +82,15 @@ class download():
         'content-disposition': 3
         }
     
-    def generic(site, url, destination, name, x='generic'):
-        with urllib.request.urlopen(url) as response, open(destination, 'wb') as of:
-            try:
-                shutil.copyfileobj(response, of)
-                if os.path.exists(destination): report('download', name)
-            except IOError as e: return variables.dict_return_codes['error']
-            else: return variables.dict_return_codes['download']
+    def generic(site, url, destination, name, x='generic'): 
+        req = requests.get(url, headers=variables.cfs_headers, 
+                           timeout=variables.dict_general['cfs_timeout'])
+        if req.status_code == 200:
+            open(destination, 'wb').write(req.content)
+            if os.path.exists(destination):
+                report('download', name)
+                return variables.dict_return_codes['download']
+            else: return variables.dict_return_codes['error']
         
     def cloudflare(site, url, destination, name, x='cloudflare'):
         cfs = cfscrape.create_scraper()
@@ -444,7 +445,7 @@ class ibdl(object):
             if match:
                 self.imageboard_name = variables.imageboard_name = s
                 report(s, self.current_url)
-        if self.imageboard_name is None: raise ErrorNotSupported('test')
+        if self.imageboard_name is None: raise ErrorNotSupported
         
     def site_to_function(self, site):
         for s, r in variables.dict_number_converter.items(): site = str.replace(site, s, r)
