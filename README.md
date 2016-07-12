@@ -1,5 +1,5 @@
 # Imageboard-DL
-Python based image downloader for various imageboards.
+Python based image downloader for various imageboards and image albums.
 
 # Dependencies
 + Python 3
