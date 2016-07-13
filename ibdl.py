@@ -13,6 +13,7 @@ import shutil
 import cfscrape
 import argparse
 import math
+import sys
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
@@ -91,7 +92,10 @@ class download():
                 report('download', name)
                 return variables.dict_return_codes['download']
             else: return variables.dict_return_codes['error']
-        
+        else:
+            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+            return variables.dict_return_codes['error']
+                
     def cloudflare(site, url, destination, name, x='cloudflare'):
         cfs = cfscrape.create_scraper()
         req = cfs.get(url, headers=variables.cfs_headers, 
@@ -104,7 +108,9 @@ class download():
                     report('download', name)
                     return variables.dict_return_codes['download']
                 else: return variables.dict_return_codes['error']
-        else: return variables.dict_return_codes['error']
+        else:
+            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+            return variables.dict_return_codes['error']
         
     def contentdisposition(site, url, destination, name, x='content-disposition'):
         req = requests.get(url, headers=variables.cfs_headers, 
@@ -117,6 +123,15 @@ class download():
                     report('download', name)
                     return variables.dict_return_codes['download']
             else: return variables.dict_return_codes['error']
+        else:
+            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+            return variables.dict_return_codes['error']
+        
+class queue():
+    def file(site, uniq, url, filename, downloader):
+        values = [site, utils.const_df(site, uniq), url,
+                   utils.sanitize_filename(filename), downloader]
+        for i in range(0, 5): scrapers.box[i].append(values[i])
 
 class utils():
     def url_to_digits(str, cutoff=0):
@@ -161,12 +176,6 @@ class utils():
                     results.count(variables.dict_return_codes['error'])))
             return out
         else: return ('No result were found')
-        
-    @staticmethod
-    def queue(site, uniq, url, filename, downloader):
-        values = [site, utils.const_df(site, uniq), url,
-                   utils.sanitize_filename(filename), downloader]
-        for i in range(0, 5): scrapers.box[i].append(values[i])
     
 class scrapers():
     
@@ -210,7 +219,7 @@ class scrapers():
                     if len(x) < 3:
                         data[i] = (('0' * (3-len(x))) + data[i])         
                 url = 'http://ep.xhamster.com/000/{}/{}/{}_1000.{}'.format(data[0], data[1], data[2], extension)
-                utils.queue(site, uniq, url, filename, download.download_type['generic'])
+                queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
         
     @classmethod
@@ -229,7 +238,7 @@ class scrapers():
             for item in jso['items']['objects']:
                 url = ('http://{}.photobucket.com/component/Download-File?file={}'
                        .format(item['subdomain'], urllib.parse.unquote(item['rawpath'])))
-                utils.queue(site, uniq, url, item['name'].__str__(), download.download_type['content-disposition'])
+                queue.file(site, uniq, url, item['name'].__str__(), download.download_type['content-disposition'])
             for page in range(2, pages+1):
                 p = self.establish(a, site, False, False, False)
                 rm = re.search(rgx_js, p.__str__().rstrip('\r\n'))
@@ -240,7 +249,7 @@ class scrapers():
                     for item in jso['items']['objects']:
                         url = ('http://{}.photobucket.com/component/Download-File?file={}'
                                .format(item['subdomain'], urllib.parse.unquote(item['rawpath'])))
-                        utils.queue(site, uniq, url, filename, download.download_type['content-disposition'])
+                        queue.file(site, uniq, url, filename, download.download_type['content-disposition'])
                 else: raise ErrorParsingJson
         else: raise ErrorParsingJson
         return self.box
@@ -255,7 +264,7 @@ class scrapers():
             source = i.findAll(["img", "source"])
             for x in source:
                 url = utils.fix_url(x['src'].__str__())
-                utils.queue(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
+                queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
         return self.box
         
     @classmethod
@@ -279,7 +288,7 @@ class scrapers():
             rm = re.search(rgx, m_image['title'])
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
-            utils.queue(site, uniq, url, filename, download.download_type['generic'])
+            queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
         
     @classmethod
@@ -294,7 +303,7 @@ class scrapers():
             if ('<img') not in link.contents[0].__str__() and ('src') in link['href'].__str__():
                 filename = utils.sanitize_filename(filename)
                 url = link['href'].__str__()
-                utils.queue(site, uniq, url, filename, download.download_type['content-disposition'])
+                queue.file(site, uniq, url, filename, download.download_type['content-disposition'])
         return self.box
     
     @classmethod
@@ -305,7 +314,7 @@ class scrapers():
         for m in media:
             filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
-            utils.queue(site, uniq, url, filename, download.download_type['generic'])
+            queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
 
     @classmethod
@@ -328,7 +337,7 @@ class scrapers():
                 if img['href'].startswith('http'):
                     url = img['href'].__str__()
             if url is not None:
-                utils.queue(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
+                queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
         return self.box
 
     @classmethod
@@ -339,7 +348,7 @@ class scrapers():
         for f in fi:
             url = 'https://librechan.net{0}'.format(f.find("a")['href'].__str__())
             filename = f.find("a").contents[0].__str__()
-            utils.queue(site, uniq, url, filename, download.download_type['generic'])
+            queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
 
     @classmethod
@@ -355,7 +364,7 @@ class scrapers():
             for desk in desks:
                 url = const_url + desk.contents[0].__str__()
                 filename = desk.contents[0].__str__()
-                utils.queue(site, uniq, url, filename, download.download_type['generic'])
+                queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
     
     @classmethod
@@ -370,8 +379,7 @@ class scrapers():
                 filename = file_a.contents[0].__str__()
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
                 url = utils.fix_url(fi.find("a")['href'])
-                values = [site, utils.const_df(site, uniq), url, filename]
-                for i in range(0, 4): self.box[i].append(values[i])
+                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
         return self.box
     
     @classmethod
@@ -383,8 +391,7 @@ class scrapers():
             filename = f.find("span", {"class" : "unimportant"}).find("span",
                 {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
-            values = [site, utils.const_df(site, uniq), url, filename]
-            for i in range(0, 4): self.box[i].append(values[i])
+            queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
 
     @classmethod
@@ -394,8 +401,7 @@ class scrapers():
         uniq = p.find("article")['data-thread-num']
         for link in image_links:
             url = link['href'].__str__()
-            values = [site, utils.const_df(site, uniq), url, utils.get_filename_from_url(url)]
-            for i in range(0, 4): self.box[i].append(values[i])
+            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
         return self.box
 
     @classmethod
@@ -452,11 +458,10 @@ class ibdl(object):
         return site
     
     def modify_list(self, lst, cdir=None):
-        temp = []
+        temp = []; p = 1
         if cdir is not None:
             for c, q in enumerate(lst[1]):
                 lst[1][c] = cdir
-        p = 1
         for i, x in enumerate(lst[3]):
             if lst[3][i] not in temp:
                 temp.append(lst[3][i])
@@ -493,10 +498,14 @@ def main():
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
     parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
+    parser.add_argument('-ss', dest='ss', action='store_true', help='Display a list of the supported sites')
 
     args = parser.parse_args() 
 
     try:
+        if args.ss:
+            for i in variables.dict_regex_table: print(i); sys.exit(1)
+            
         for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
        
     except ErrorRequest:
