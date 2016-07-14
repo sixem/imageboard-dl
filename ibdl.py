@@ -83,49 +83,55 @@ class download():
         'content-disposition': 3
         }
     
-    def generic(site, url, destination, name, x='generic'): 
-        req = requests.get(url, headers=variables.cfs_headers, 
-                           timeout=variables.dict_general['cfs_timeout'])
-        if req.status_code == 200:
-            open(destination, 'wb').write(req.content)
-            if os.path.exists(destination):
-                report('download', name)
-                return variables.dict_return_codes['download']
-            else: return variables.dict_return_codes['error']
-        else:
-            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
-            return variables.dict_return_codes['error']
-                
-    def cloudflare(site, url, destination, name, x='cloudflare'):
-        cfs = cfscrape.create_scraper()
-        req = cfs.get(url, headers=variables.cfs_headers, 
-                     timeout=variables.dict_general['cfs_timeout'], stream=True)
-        if req.status_code is 200:
-            with open(destination, 'wb') as f:
-                req.raw.decode_content = True
-                shutil.copyfileobj(req.raw, f)
-                if os.path.exists(destination):
-                    report('download', name)
-                    return variables.dict_return_codes['download']
-                else: return variables.dict_return_codes['error']
-        else:
-            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
-            return variables.dict_return_codes['error']
-        
-    def contentdisposition(site, url, destination, name, x='content-disposition'):
-        req = requests.get(url, headers=variables.cfs_headers, 
-                           timeout=variables.dict_general['cfs_timeout'])
-        if req.status_code == 200:
-            rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
-            if rm:
+    def generic(site, url, destination, name, x='generic'):
+        try:
+            req = requests.get(url, headers=variables.cfs_headers, 
+                               timeout=variables.dict_general['cfs_timeout'])
+            if req.status_code == 200:
                 open(destination, 'wb').write(req.content)
                 if os.path.exists(destination):
                     report('download', name)
                     return variables.dict_return_codes['download']
-            else: return variables.dict_return_codes['error']
-        else:
-            report('download', 'ERROR ({}): {}'.format(req.status_code, name))
-            return variables.dict_return_codes['error']
+                else: return variables.dict_return_codes['error']
+            else:
+                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                return variables.dict_return_codes['error']
+        except: return variables.dict_return_codes['error']
+                
+    def cloudflare(site, url, destination, name, x='cloudflare'):
+        try:
+            cfs = cfscrape.create_scraper()
+            req = cfs.get(url, headers=variables.cfs_headers, 
+                         timeout=variables.dict_general['cfs_timeout'], stream=True)
+            if req.status_code is 200:
+                with open(destination, 'wb') as f:
+                    req.raw.decode_content = True
+                    shutil.copyfileobj(req.raw, f)
+                    if os.path.exists(destination):
+                        report('download', name)
+                        return variables.dict_return_codes['download']
+                    else: return variables.dict_return_codes['error']
+            else:
+                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                return variables.dict_return_codes['error']
+        except: return variables.dict_return_codes['error']
+        
+    def contentdisposition(site, url, destination, name, x='content-disposition'):
+        try:
+            req = requests.get(url, headers=variables.cfs_headers, 
+                               timeout=variables.dict_general['cfs_timeout'])
+            if req.status_code == 200:
+                rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
+                if rm:
+                    open(destination, 'wb').write(req.content)
+                    if os.path.exists(destination):
+                        report('download', name)
+                        return variables.dict_return_codes['download']
+                else: return variables.dict_return_codes['error']
+            else:
+                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                return variables.dict_return_codes['error']
+        except: return variables.dict_return_codes['error']
         
 class queue():
     def file(site, uniq, url, filename, downloader):
@@ -418,10 +424,10 @@ class ibdl(object):
 
     def __init__(self, site, dest, dirn):
         self.current_url = site
-        if dest is not None: variables.save_directory = args.destination
+        if dest is not None: variables.save_directory = dest
         
         self.detect_site()
-        self.download_images(self.modify_list(getattr(scrapers, 
+        self.download_images(self.check_list(getattr(scrapers, 
             self.site_to_function(self.imageboard_name))(a=site), cdir=dirn))  
     
     def create_dir(self, a):
@@ -457,7 +463,7 @@ class ibdl(object):
         for s, r in variables.dict_number_converter.items(): site = str.replace(site, s, r)
         return site
     
-    def modify_list(self, lst, cdir=None):
+    def check_list(self, lst, cdir=None):
         temp = []; p = 1
         if cdir is not None:
             for c, q in enumerate(lst[1]):
@@ -498,13 +504,14 @@ def main():
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
     parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
-    parser.add_argument('-ss', dest='ss', action='store_true', help='Display a list of the supported sites')
+    parser.add_argument('-s', dest='s', action='store_true', help='Display the available downloaders (Supported sites)')
 
     args = parser.parse_args() 
 
     try:
-        if args.ss:
-            for i in variables.dict_regex_table: print(i); sys.exit(1)
+        if args.s:
+            for i in variables.dict_regex_table: print(i)
+            sys.exit(1)
             
         for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
        
