@@ -22,6 +22,8 @@ class variables():
     imageboard_name = None
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
+    version = "1.0.3"
+    
     dict_general = {
         'cfs_timeout': 60,
         'directory_format': '{}-{}'
@@ -339,11 +341,16 @@ class scrapers():
                 match = re.search("'(http(s)?:\/\/(.*).(.{2,5})\/(.*).(.{3,4}))'", img['onclick'].__str__())
                 if match:
                     url = match.group(1)
+                    filename = utils.get_filename_from_url(url)
             else:
-                if img['href'].startswith('http'):
+                if img['href'].startswith('/a_cimg/'):
+                    url = 'https://arhivach.org/' + img['href'].__str__()
+                    filename = img.contents[0].__str__()
+                if img['href'].startswith('https://'):
                     url = img['href'].__str__()
+                    filename = img.contents[0].__str__()
             if url is not None:
-                queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
+                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
         return self.box
 
     @classmethod
@@ -505,13 +512,16 @@ def main():
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
     parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
     parser.add_argument('-s', dest='s', action='store_true', help='Display the available downloaders (Supported sites)')
+    parser.add_argument('-v', dest='v', action='store_true', help='Show current version')
 
     args = parser.parse_args() 
 
     try:
+        if args.v: print('imageboard-dl: version {}'.format(variables.version)); sys.exit(0)
+        
         if args.s:
             for i in variables.dict_regex_table: print(i)
-            sys.exit(1)
+            sys.exit(0)
             
         for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
        
