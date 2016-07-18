@@ -15,6 +15,7 @@ import argparse
 import math
 import sys
 
+
 def report(site, message):
     print('[{}] {}'.format(site, message))
 
@@ -22,14 +23,14 @@ class variables():
     imageboard_name = None
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
-    version = "1.0.3"
+    version = "1.0.4"
     
     dict_general = {
-        'cfs_timeout': 60,
+        'cfs_timeout': 120,
         'directory_format': '{}-{}'
         }
 
-    cfs_headers = {
+    req_headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/47.0 (Chrome)',
         'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -37,9 +38,10 @@ class variables():
         'Accept-Language': 'en-us,en;q=0.5',
         }
 
-    dict_regex_table = {
-        '2chhk': '((https?:\/\/)2ch.hk\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    sites_regex_table = {
+        '2chhk': '((https?:\/\/)2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '2channet': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
+        '4archive': '(https?:\/\/4archive.org\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,})',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '7chanorg': '((https?:\/\/)7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
@@ -77,6 +79,38 @@ class variables():
         'error': 4
         }
     
+class tor():
+    tor_ip = None
+    def establish(port):
+        try:
+            import socks
+            import socket
+            socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5 , "127.0.0.1", port, True)
+            socket.socket = socks.socksocket
+            timeout=variables.dict_general['cfs_timeout'] = 240
+            return True
+        except ImportError:
+            report("error", "Socks could not be imported (PySocks is required to use tor with python.)")
+            return False
+        except:
+            return False
+    
+    @classmethod
+    def check(self):
+        try:
+            req = requests.get('https://check.torproject.org/',
+                               headers=variables.req_headers, 
+                               timeout=variables.dict_general['cfs_timeout'])
+            if req.status_code == 200:
+                if ('Congratulations. This browser is configured to use Tor.') in req.text:
+                    rm = re.search('<p>.*:  <strong>([0-9.]{4,15})<\/strong><\/p>', req.text)
+                    if rm: self.tor_ip = rm.group(1)
+                    return True
+            else:
+                return False
+        except:
+            return False
+    
 class download():
      
     download_type = {
@@ -87,7 +121,7 @@ class download():
     
     def generic(site, url, destination, name, x='generic'):
         try:
-            req = requests.get(url, headers=variables.cfs_headers, 
+            req = requests.get(url, headers=variables.req_headers, 
                                timeout=variables.dict_general['cfs_timeout'])
             if req.status_code == 200:
                 open(destination, 'wb').write(req.content)
@@ -96,14 +130,14 @@ class download():
                     return variables.dict_return_codes['download']
                 else: return variables.dict_return_codes['error']
             else:
-                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                report('error', '{}: {}'.format(req.status_code, name))
                 return variables.dict_return_codes['error']
         except: return variables.dict_return_codes['error']
                 
     def cloudflare(site, url, destination, name, x='cloudflare'):
         try:
             cfs = cfscrape.create_scraper()
-            req = cfs.get(url, headers=variables.cfs_headers, 
+            req = cfs.get(url, headers=variables.req_headers, 
                          timeout=variables.dict_general['cfs_timeout'], stream=True)
             if req.status_code is 200:
                 with open(destination, 'wb') as f:
@@ -114,13 +148,13 @@ class download():
                         return variables.dict_return_codes['download']
                     else: return variables.dict_return_codes['error']
             else:
-                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                report('error', '{}: {}'.format(req.status_code, name))
                 return variables.dict_return_codes['error']
         except: return variables.dict_return_codes['error']
         
     def contentdisposition(site, url, destination, name, x='content-disposition'):
         try:
-            req = requests.get(url, headers=variables.cfs_headers, 
+            req = requests.get(url, headers=variables.req_headers, 
                                timeout=variables.dict_general['cfs_timeout'])
             if req.status_code == 200:
                 rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
@@ -131,7 +165,7 @@ class download():
                         return variables.dict_return_codes['download']
                 else: return variables.dict_return_codes['error']
             else:
-                report('download', 'ERROR ({}): {}'.format(req.status_code, name))
+                report('error', '{}: {}'.format(req.status_code, name))
                 return variables.dict_return_codes['error']
         except: return variables.dict_return_codes['error']
         
@@ -266,7 +300,7 @@ class scrapers():
     def imgurxalbum(self, a ,site="imgur:album", uniq=None):
         p = self.establish(a, site)
         images = p.findAll("div", {"class" : "post-image"})
-        match = re.search(variables.dict_regex_table['imgur:album'], a)
+        match = re.search(variables.sites_regex_table['imgur:album'], a)
         if match: uniq = match.group(2)
         for i in images:
             source = i.findAll(["img", "source"])
@@ -330,13 +364,13 @@ class scrapers():
         p = self.establish(a, site)
         images = p.findAll("a", {"class" : ["img_filename"]})
         if uniq is None:
-            rm = re.search(variables.dict_regex_table['arhivach'], a)
+            rm = re.search(variables.sites_regex_table['arhivach'], a)
             if rm:
                 uniq = rm.group(3)
             else:
                 uniq = ''.join(c for c in a if c.isdigit())
         for img in images:
-            url = None
+            url = filename = None
             if img['href'][0] == ('#'):
                 match = re.search("'(http(s)?:\/\/(.*).(.{2,5})\/(.*).(.{3,4}))'", img['onclick'].__str__())
                 if match:
@@ -367,7 +401,7 @@ class scrapers():
     @classmethod
     def twochhk(self, a, site="2chhk", uniq=None):
         p = self.establish(a, site)
-        rm = re.search(variables.dict_regex_table['2chhk'], a)
+        rm = re.search(variables.sites_regex_table['2chhk'], a)
         uniq = rm.group(5)
         const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
         posts = p.findAll("div", {"class" :
@@ -377,6 +411,21 @@ class scrapers():
             for desk in desks:
                 url = const_url + desk.contents[0].__str__()
                 filename = desk.contents[0].__str__()
+                queue.file(site, uniq, url, filename, download.download_type['generic'])
+        return self.box
+    
+    @classmethod
+    def fourarchive(self, a, site="4archive", uniq=None):
+        p = self.establish(a, site)
+        posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
+        uniq = p.find("div", {"class" : "thread"})['id'].__str__()
+        for post in posts:
+            file_info = post.findAll("div", {"class" : ["fileText"]})
+            for fi in file_info:
+                file_a = fi.find("a")
+                filename = file_a.contents[0].__str__()
+                if file_a.has_attr('title'): filename = file_a['title'].__str__()
+                url = utils.fix_url(fi.find("a")['href'])
                 queue.file(site, uniq, url, filename, download.download_type['generic'])
         return self.box
     
@@ -420,7 +469,7 @@ class scrapers():
     @classmethod
     def request(self, url):
         cfs = cfscrape.create_scraper()
-        request = cfs.get(url, headers = variables.cfs_headers,
+        request = cfs.get(url, headers = variables.req_headers,
             timeout = variables.dict_general['cfs_timeout'])
         if request.status_code is 200: return request.text
         else: raise ErrorRequest
@@ -459,7 +508,7 @@ class ibdl(object):
         else: return variables.dict_return_codes['skip']
         
     def detect_site(self):
-        for s, r in variables.dict_regex_table.items():
+        for s, r in variables.sites_regex_table.items():
             match = re.search(r, self.current_url)
             if match:
                 self.imageboard_name = variables.imageboard_name = s
@@ -492,50 +541,62 @@ class ibdl(object):
                     report('download', 'Using the {} downloader.'.format(value))
         pool = mp.Pool()
         results = pool.starmap(self.download, zip(box[0], box[1], box[2], box[3], box[4]))
-        report('download', utils.result_to_string(results))
+        report('info', utils.result_to_string(results))
 
 class ErrorRequest(Exception):
-    """Raised if the page returns a bad status code"""
+    '''Raised if the page returns a bad status code'''
     
 class ErrorNotSupported(Exception):
-    """Raised if the url can't be parsed and or identified"""
+    '''Raised if the url can't be parsed and or identified'''
     
 class ErrorCreatingDirectory(Exception):
-    """Raised if directory could not be created"""
+    '''Raised if directory could not be created'''
     
 class ErrorParsingJson(Exception):
-    """Raised if encountering an error when extracting and or parsing a json object"""
+    '''Raised if encountering an error when extracting and or parsing a json object'''
 
 def main():
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
     parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
     parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
     parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
-    parser.add_argument('-s', dest='s', action='store_true', help='Display the available downloaders (Supported sites)')
-    parser.add_argument('-v', dest='v', action='store_true', help='Show current version')
+    parser.add_argument('-s', dest='s', action='store_true', help='Display the available downloaders (Supported sites)', required = False)
+    parser.add_argument('-v', dest='v', action='store_true', help='Show current version', required = False)
+    parser.add_argument('-tor', dest = 'tor_port', type = int, default = None, help = 'Use tor, most specify a tor port (Usually 9050)', required = False)
 
     args = parser.parse_args() 
 
-    try:
-        if args.v: print('imageboard-dl: version {}'.format(variables.version)); sys.exit(0)
+    try: 
+        if args.v: report('imageboard-dl', variables.version); sys.exit(0)
         
         if args.s:
-            for i in variables.dict_regex_table: print(i)
+            for i in variables.sites_regex_table: print(i)
             sys.exit(0)
+
+        if args.tor_port:
+            if tor.establish(int(args.tor_port)) is not False:
+                if tor.check() is True:
+                    if tor.tor_ip is not None: report('info', 'Tor check successful ({})'.format(tor.tor_ip))
+                    else: report('info', 'Tor check successful')
+                    report('info', 'Please note that some sites may not work with tor (captchas etc ..)')
+                else: report('info', 'Tor check failed - exiting'); sys.exit(0)
+            else: report('info', 'Tor check failed - exiting'); sys.exit(0)
             
-        for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
+        if len(args.urls) is 0: report('info', 'No URLs were passed - exiting'); sys.exit(0)
+        else:
+            for url in args.urls: scraper = ibdl(url, args.destination, args.directory_name)
        
     except ErrorRequest:
-        report("error", "Error requesting page")
+        report('error', 'Error requesting page')
 
     except ErrorNotSupported:
-        report("error", "Unsupported URL")
+        report('error', 'Unsupported URL')
         
     except ErrorCreatingDirectory:
-        report("error", "Error creating directory, do you have the required permissions?")
+        report('error', 'Error creating directory, do you have the required permissions?')
         
     except ErrorParsingJson:
-        report("error", "Error parsing JSON")
+        report('error', 'Error parsing JSON')
 
 if __name__ == '__main__':
     main()
