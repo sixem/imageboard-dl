@@ -7,7 +7,7 @@ Python based image downloader for various imageboards and image albums.
 + `cd imageboard-dl`
 + `python setup.py install`
 
-## Pypi Package
+## PyPi
 + `pip install imageboard-dl`
 
 # Requires
