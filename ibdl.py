@@ -23,7 +23,7 @@ class variables():
     imageboard_name = None
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
-    version = "1.0.4"
+    version = "1.0.41"
     
     dict_general = {
         'cfs_timeout': 120,
@@ -39,8 +39,8 @@ class variables():
         }
 
     sites_regex_table = {
-        '2chhk': '((https?:\/\/)2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '2channet': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
+        '2ch.hk': '((https?:\/\/)2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '2chan.net': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
         '4archive': '(https?:\/\/4archive.org\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,})',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
@@ -51,7 +51,11 @@ class variables():
         'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         'imgur:album': 'https?:\/\/imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
         'photbucket:album': '(https?:\/\/([a-zA-Z0-9]{1,10}).photobucket.com\/user\/([a-zA-Z0-9]{1,})\/library\/([a-zA-Z0-9 %]{1,}))',
-        'xhamster:gallery': '(https?:\/\/xhamster.com\/photos\/gallery\/[0-9]{1,}\/.*.html)'
+        'xhamster:gallery': '(https?:\/\/xhamster.com\/photos\/gallery\/[0-9]{1,}\/.*.html)',
+        'wizchan': '(https?:\/\/)wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
+        '16chan': '(https?:\/\/)16chan.nl\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
+        'warosu.org': '(https?://warosu.org/([A-Za-z0-9]{1,})/thread/([0-9]{1,}))',
+        'archived.moe': 'https?://archived?.moe/([A-Za-z0-9]{1,})/thread/([0-9]{1,})/'
         }
 
     possible_reasons = {
@@ -69,7 +73,8 @@ class variables():
         '8': 'eight',
         '9': 'nine',
         '10': 'ten',
-        ':': 'x'
+        ':': 'x',
+        '.': '_'
         }
 
     dict_return_codes = {
@@ -87,7 +92,7 @@ class tor():
             import socket
             socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5 , "127.0.0.1", port, True)
             socket.socket = socks.socksocket
-            timeout=variables.dict_general['cfs_timeout'] = 240
+            timeout = variables.dict_general['cfs_timeout'] = 240
             return True
         except ImportError:
             report("error", "Socks could not be imported (PySocks is required to use tor with python.)")
@@ -139,7 +144,7 @@ class download():
             cfs = cfscrape.create_scraper()
             req = cfs.get(url, headers=variables.req_headers, 
                          timeout=variables.dict_general['cfs_timeout'], stream=True)
-            if req.status_code is 200:
+            if req.status_code == 200:
                 with open(destination, 'wb') as f:
                     req.raw.decode_content = True
                     shutil.copyfileobj(req.raw, f)
@@ -171,7 +176,7 @@ class download():
         
 class queue():
     def file(site, uniq, url, filename, downloader):
-        values = [site, utils.const_df(site, uniq), url,
+        values = [site, utils.const_df(site.replace(':', '_'), uniq), url,
                    utils.sanitize_filename(filename), downloader]
         for i in range(0, 5): scrapers.box[i].append(values[i])
 
@@ -184,6 +189,9 @@ class utils():
             if ele.isdigit():
                 out_number += ele
         return out_number[cutoff:]
+    
+    def getbetween(a, s, e):
+        return str(a.split(s)[1]).split(')')[0]
     
     def fix_url(a):
         if a.startswith('//'): a = 'https:%s' % a
@@ -233,6 +241,77 @@ class scrapers():
             if bs is True: return BeautifulSoup(request, "html.parser")
             else: return request
         except: raise ErrorRequest
+        
+    @classmethod
+    def archived_moe(self, a, site="archived.moe", uniq=None):
+        p = self.establish(a, site)
+        redirect = [[], []]
+        posts = p.findAll("a", {"class" : "post_file_filename"})
+        uniq = p.find("article", {"class" : "thread"})['id'].__str__()
+        for post in posts:
+            if post.has_attr('title'): filename = post['title']
+            else: filename = post.contents[0]
+            redirect[0].append(str(post['href']))
+            redirect[1].append(filename)
+        report('info', 'Fetching redirect URLs ..')
+        for x, url in enumerate(redirect[0]):
+            p = self.establish(url, site, bs=False, rb=False, v=False)
+            rm = re.search('content="[0-9]{1,}; url=(.*)">', p)
+            if rm:
+                queue.file(site, uniq, rm.group(1), redirect[1][x], download.download_type['cloudflare'])
+        return self.box
+        
+    @classmethod
+    def warosu_org(self, a, site="warosu.org", uniq=None):
+        p = self.establish(a, site)
+        regex = ('File: [0-9]{1,3} [A-Za-z]{1,3}, [0-9]{1,5}x[0-9]{1,5}, (.*..*)')
+        op_post = p.find("div", {"class" : "content"}).find("div")
+        uniq = str(op_post['id'])
+        url = 'https:' + str(op_post.find("img", {"class" : "thumb"}).parent['href'])
+        fn_search = re.search(regex, str(op_post.find("span").contents[0]))
+        if fn_search: filename = fn_search.group(1)
+        else: filename = utils.get_filename_from_url(url)
+        queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+        replies = p.findAll("td", {"class" : "reply"})
+        for reply in replies:
+            try:
+                url = 'https:' + str(reply.find("img", {"class" : "thumb"}).parent['href'])
+                x = reply.findAll("span")
+                for i in x:
+                    if ('File: ') in i.contents[0]:
+                        fn_search = re.search(regex, i.contents[0])
+                        if fn_search: filename = fn_search.group(1)
+                        else: filename = utils.get_filename_from_url(url)
+                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+            except: pass
+        return self.box
+        
+    @classmethod
+    def onesixchan(self, a, site="16chan", uniq=None):
+        p = self.establish(a, site)
+        alinks = p.findAll("a", {"class" : "attachment-link"})
+        op = p.find("div", {"class" : "op-container"})
+        uniq = op['data-board_uri'].__str__() + op['data-board_id'].__str__()
+        for link in alinks:
+            url = 'https://16chan.nl' + link['href'].__str__()
+            filename = utils.get_filename_from_url(url)
+            queue.file(site, uniq, url, filename, download.download_type['generic'])
+        return self.box
+        
+    @classmethod
+    def wizchan(self, a, site="wizchan", uniq=None):
+        rm = re.search(variables.sites_regex_table['wizchan'], a)
+        if rm:
+            url = '{}wizchan.org/{}/res/{}.json'.format(rm.group(1), rm.group(2), rm.group(3))
+            uniq = rm.group(3)
+            p = self.establish(url, site, bs=False)
+            thread_data = utils.get_json(p)
+            for post in thread_data['posts']:
+                if post.get('filename'):
+                    filename = post['filename'] + post['ext']
+                    url = '{}wizchan.org/{}/src/{}{}'.format(rm.group(1), rm.group(2), post['tim'], post['ext'])
+                    queue.file(site, uniq, url, filename, download.download_type['generic'])
+        return self.box
  
     @classmethod
     def xhamsterxgallery(self, a, site="xhamster:gallery", uniq=None, pages=1):
@@ -253,7 +332,7 @@ class scrapers():
         for item in items:
             rm = re.search('i_([0-9]{1,3})([0-9]{3})([0-9]{3})', item['id'].__str__())
             if rm:
-                link = item.find("img", {"class" : "vert"})['src'].__str__()
+                link = str(item.find("img", {"class" : "vert"})['src'])
                 extension = link.split('.')[len(link.split('.'))-1]
                 filename = item['id'].__str__() + '.' + extension
                 data = [rm.group(1), rm.group(2), rm.group(3)]
@@ -305,7 +384,7 @@ class scrapers():
         for i in images:
             source = i.findAll(["img", "source"])
             for x in source:
-                url = utils.fix_url(x['src'].__str__())
+                url = utils.fix_url(x['src'].__str__()).replace('.mp4', '.gif')
                 queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
         return self.box
         
@@ -334,7 +413,7 @@ class scrapers():
         return self.box
         
     @classmethod
-    def twochannet(self, a ,site="2channet", uniq=None):
+    def twochan_net(self, a ,site="2chan.net", uniq=None):
         p = self.establish(a, site)
         p.find("div", {"class" : "thre"})
         uniq = p.find("input", {"name" : "resto"})['value'].__str__()
@@ -399,9 +478,10 @@ class scrapers():
         return self.box
 
     @classmethod
-    def twochhk(self, a, site="2chhk", uniq=None):
+    #Should probably use https://2ch.hk/*/res/*.json to grab thread data in the future
+    def twoch_hk(self, a, site="2ch.hk", uniq=None):
         p = self.establish(a, site)
-        rm = re.search(variables.sites_regex_table['2chhk'], a)
+        rm = re.search(variables.sites_regex_table['2ch.hk'], a)
         uniq = rm.group(5)
         const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
         posts = p.findAll("div", {"class" :
