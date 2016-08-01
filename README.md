@@ -11,7 +11,7 @@ Python based image downloader for various imageboards and image albums.
 + `pip install imageboard-dl`
 
 # Requires
-+ Python 3.3+
++ Python 3+
 
 # Usage
 `imageboard-dl https://boards.4chan.org/hr/thread/123456`
