@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+'''
+imageboard-dl
+
+usage imageboard-dl [-h] [-v] [-s] URL(s) [-d PATH] [-dd DIRECTORY]
+
+@sixem
+'''
+
 from bs4 import BeautifulSoup
 from os.path import expanduser
 import multiprocessing as mp
@@ -13,7 +21,6 @@ try:
 except ImportError:
     from urlparse import urlparse
     from urllib import urlopen
-
 import requests
 import shutil
 import cfscrape
@@ -28,10 +35,13 @@ def report(site, message):
 
 class variables():
     imageboard_name = None
+    
+    # Default save directory ($HOME/Downloads)
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
-    version = "1.0.5 - 2016.08.01"
+    version = "1.0.51 - 2016.08.10"
     
+    # General values
     general_vars = {
         'cfs_timeout': 120,
         'dir_frmt': '{}-{}',
@@ -39,6 +49,7 @@ class variables():
         'connest_frmt_ip': 'Connection established .. ({}:{})'
         }
 
+    # Request headers
     req_headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/47.0 (Chrome)',
         'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
@@ -47,10 +58,10 @@ class variables():
         'Accept-Language': 'en-us,en;q=0.5',
         }
 
+    # Regex table used to identify URLs being passed
     sites_regex_table = {
         '2ch.hk': '((https?:\/\/)2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '2chan.net': '((https?:\/\/)([A-Za-z]{1,5}).2chan.net\/([A-Za-z0-9]{1,})\/(res)\/([0-9]{1,}).html?)',
-        '4archive': '(https?:\/\/4archive.org\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,})',
+        '4archive': '(https?:\/\/(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
         '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '7chan.org': '((https?:\/\/)7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
@@ -59,18 +70,19 @@ class variables():
         'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         'imgur:album': 'https?:\/\/imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
-        'xhamster:gallery': '(https?:\/\/xhamster.com\/photos\/gallery\/[0-9]{1,}\/.*.html)',
         'wizchan': '(https?:\/\/)wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
-        '16chan': '(https?:\/\/)16chan.nl\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
+        '16chan.nl': '(https?:\/\/)16chan.nl\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
         'warosu.org': '(https?://warosu.org/([A-Za-z0-9]{1,})/thread/([0-9]{1,}))',
         'archived.moe': 'https?://archived?.moe/([A-Za-z0-9]{1,})/thread/([0-9]{1,})/',
         'vsco.co:user': 'https?://vsco.co/.*'
         }
 
+    # Possible reasons for a error code (requests)
     possible_reasons = {
         403: ['Are you using a VPN / Proxy?']
         }
 
+    # Used for site to function convertion
     dict_number_converter = {
         '1': 'one',
         '2': 'two',
@@ -86,6 +98,7 @@ class variables():
         '.': '_'
         }
 
+    # Used for returning results
     dict_return_codes = {
         'attempt': 1,
         'skip': 2,
@@ -95,6 +108,7 @@ class variables():
 
 class download():
      
+    # Available downloaders
     download_type = {
         'generic': 1,
         'cloudflare': 2,
@@ -102,6 +116,8 @@ class download():
         }
     
     def generic(site, url, destination, name, x='generic'):
+        
+        '''Generic Downloader'''
         
         try:
             req = requests.get(url, headers=variables.req_headers, 
@@ -123,6 +139,8 @@ class download():
             return [variables.dict_return_codes['error'], False]
                 
     def cloudflare(site, url, destination, name, x='cloudflare'):
+        
+        '''Cloudflare Downloader'''
         
         try:
             
@@ -149,6 +167,8 @@ class download():
             return [variables.dict_return_codes['error'], False]
         
     def contentdisposition(site, url, destination, name, x='content-disposition'):
+        
+        '''Content-Disposition (Attachment) Downloader'''
         
         try:
             req = requests.get(url, headers=variables.req_headers, 
@@ -248,15 +268,18 @@ class utils():
     def return_code_to_string(ncode):
         
         mdict = variables.dict_return_codes
-        try: return mdict.keys()[mdict.values().index(ncode)]
-        except: return list(mdict.keys())[list(mdict.values()).index(ncode)]
+        try:
+            return mdict.keys()[mdict.values().index(ncode)]
+        except:
+            return list(mdict.keys())[list(mdict.values()).index(ncode)]
 
     def get_json(js):
         
         try:
             jso = json.loads(js)
             return jso
-        except: raise ErrorParsingJson
+        except:
+            raise ErrorParsingJson
     
     def result_to_string(results):
         
@@ -301,17 +324,19 @@ class scrapers(object):
             timeout = variables.general_vars['cfs_timeout'], cookies = use_cookies, stream=True)
         
         try:
+            # Gets the IP of the request
             response_ip = (request.raw._connection.sock.getpeername())
         except:
             response_ip = None
         
+        # See if request is good if not raise an error
         if request.status_code is 200:
-            return [request.text, request.cookies, response_ip]
+            return [request.text, request.cookies, response_ip, request]
         else:
-            raise ErrorRequest
+            raise ErrorRequest(request.status_code)
     
     @classmethod
-    def establish(self, a, site, v=True, bs=True, rb=True):
+    def establish(self, a, site, v=True, bs=True, rb=True, ra=False):
         
         try:
             request = self.request(a)
@@ -326,37 +351,38 @@ class scrapers(object):
                     report(site, variables.general_vars['connest_frmt'])
                 
             if bs is True:
-                return BeautifulSoup(request[0], "html.parser")
+                if ra is True:
+                    return [BeautifulSoup(request[0], "html.parser"), request]
+                else: 
+                    return BeautifulSoup(request[0], "html.parser")
             
             else:
-                return request[0]
+                if ra is True:
+                    return request
+                else: 
+                    return request[0]
         except:
-            raise ErrorRequest
+            raise ErrorRequest(request[3].status_code)
         
     @classmethod
     def vsco_coxuser(self, a, site="vsco.co:user", uniq=None):
         
+        '''vsco.co (only user pictures) Downloader'''
+        
         is_media_link = utils.re_find('https?:\/\/vsco.co\/(.*)\/media\/[A-Za-z0-9]{1,}', a, 1)
         if is_media_link is not False: a = 'https://vsco.co/{}/'.format(is_media_link)
         
-        request = self.request(a)
+        p = self.establish(a, site, ra=True)
         
-        if request[2] is not None:
-            report(site, variables.general_vars['connest_frmt_ip'].format(request[2][0], request[2][1]))
-        else:
-            report(site, variables.general_vars['connest_frmt'])
-        
-        wrapper = BeautifulSoup(request[0], "html.parser")
-        
-        user = wrapper.find("meta", {"property" : "og:site_name"})['content']
+        user = p[0].find("meta", {"property" : "og:site_name"})['content']
         user = utils.re_find('[a-z]{1,}\.[a-z]{1,}/(.*) \| [A-Z]{1,}', str(user), 1)
         
-        id = wrapper.find("meta", {"property" : "al:ios:url"})['content']
+        id = p[0].find("meta", {"property" : "al:ios:url"})['content']
         id = utils.re_find('\/([0-9]{1,})\/', str(id), 1)
         
         try:
-            ajax = 'https://vsco.co/ajxp/{}/2.0/medias?site_id={}&page=1&size=99999'.format(request[1]['vs'], id)
-            request = self.request(ajax, use_cookies = request[1])
+            ajax = 'https://vsco.co/ajxp/{}/2.0/medias?site_id={}&page=1&size=99999'.format(p[1][1]['vs'], id)
+            request = self.request(ajax, use_cookies = p[1][1])
             ajax_json = utils.get_json(request[0])
             report('info', 'user \'{}\' has {} post(s)'.format(user, ajax_json['total']))
             
@@ -372,6 +398,8 @@ class scrapers(object):
         
     @classmethod
     def archived_moe(self, a, site="archived.moe", uniq=None):
+        
+        '''archived.moe Downloader'''
         
         p = self.establish(a, site)
         
@@ -400,6 +428,8 @@ class scrapers(object):
         
     @classmethod
     def warosu_org(self, a, site="warosu.org", uniq=None):
+        
+        '''warosu.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -435,7 +465,9 @@ class scrapers(object):
         return self.box
         
     @classmethod
-    def onesixchan(self, a, site="16chan", uniq=None):
+    def onesixchan_nl(self, a, site="16chan", uniq=None):
+        
+        '''16chan.nl Downloader'''
         
         p = self.establish(a, site)
         
@@ -454,6 +486,8 @@ class scrapers(object):
     @classmethod
     def wizchan(self, a, site="wizchan", uniq=None):
         
+        '''wizchan.org Downloader'''
+        
         rm = re.search(variables.sites_regex_table['wizchan'], a)
         
         if rm:
@@ -471,51 +505,11 @@ class scrapers(object):
                     queue.file(site, uniq, url, filename, download.download_type['generic'])
                     
         return self.box
- 
-    @classmethod
-    def xhamsterxgallery(self, a, site="xhamster:gallery", uniq=None, pages=1):
-        
-        p = self.establish(a, site)
-        
-        uniq = utils.url_to_digits(a)
-        data = p.__str__()
-        base_url = p.find("link", {"hreflang" : ["en", "ru", "de", "pl", "es", "fr"]})['href'].__str__()
-        pager = p.find("div", {"class" : "pager"}).find("a", {"class" : "last"})
-        
-        if pager:
-            rm = re.search('(\?page=([0-9]{1,}))', pager.__str__())
-            if rm: pages = int(rm.group(2))
-            
-        report(site, 'Fetching Page 1 ..')
-        
-        for page in range(2, pages+1):
-            report(site, 'Fetching Page {} ..'.format(page))
-            n_url = '{}?page={}'.format(base_url, page)
-            data += self.establish(n_url, site, v=False, bs=False, rb=False)
-            
-        items = BeautifulSoup(data, "html.parser").findAll("div", {"class" : "iItem"})
-        
-        for item in items:
-            rm = re.search('i_([0-9]{1,3})([0-9]{3})([0-9]{3})', item['id'].__str__())
-            
-            if rm:
-                link = str(item.find("img", {"class" : "vert"})['src'])
-                extension = link.split('.')[len(link.split('.'))-1]
-                filename = item['id'].__str__() + '.' + extension
-                data = [rm.group(1), rm.group(2), rm.group(3)]
-                
-                for i, x in enumerate(data):
-                    if len(x) < 3:
-                        data[i] = (('0' * (3-len(x))) + data[i])        
-                         
-                url = 'http://ep.xhamster.com/000/{}/{}/{}_1000.{}'.format(data[0], data[1], data[2], extension)
-                
-                queue.file(site, uniq, url, filename, download.download_type['generic'])
-                
-        return self.box
         
     @classmethod
     def imgurxalbum(self, a ,site="imgur:album", uniq=None):
+    
+        '''imgur.com Downloader'''
         
         p = self.establish(a, site, bs=False)
         
@@ -534,6 +528,8 @@ class scrapers(object):
         
     @classmethod
     def sevenchan_org(self, a ,site="7chan.org", uniq=None):
+        
+        '''7chan.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -562,33 +558,11 @@ class scrapers(object):
             queue.file(site, uniq, url, filename, download.download_type['generic'])
             
         return self.box
-        
-    @classmethod
-    def twochan_net(self, a ,site="2chan.net", uniq=None):
-        
-        p = self.establish(a, site)
-        
-        p.find("div", {"class" : "thre"})
-        uniq = p.find("input", {"name" : "resto"})['value'].__str__()
-        
-        if len(uniq) < 1 and uniq.isdigit() is False:
-            uniq = utils.url_to_digits(a, 1)
-            
-        links = p.findAll("a", {"target" : "_blank"})
-        
-        for link in links:
-            filename = link.contents[0].__str__()
-            
-            if ('<img') not in link.contents[0].__str__() and ('src') in link['href'].__str__():
-                filename = utils.sanitize_filename(filename)
-                url = link['href'].__str__()
-                
-                queue.file(site, uniq, url, filename, download.download_type['content-disposition'])
-                
-        return self.box
     
     @classmethod
     def masterchan(self, a, site="masterchan", uniq=None):
+        
+        '''masterchan.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -605,6 +579,8 @@ class scrapers(object):
 
     @classmethod
     def arhivach(self, a, site="arhivach", uniq=None):
+        
+        '''arhivach.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -645,6 +621,8 @@ class scrapers(object):
     @classmethod
     def librechan(self, a, site="librechan", uniq=None):
         
+        '''librechan.net Downloader'''
+        
         p = self.establish(a, site)
         
         fi = p.findAll("p", {"class" : "fileinfo"})
@@ -661,6 +639,8 @@ class scrapers(object):
     @classmethod
     #Should probably use https://2ch.hk/*/res/*.json to grab thread data in the future
     def twoch_hk(self, a, site="2ch.hk", uniq=None):
+        
+        '''2ch.(hk, pm, re, tf, wf, yt, so) Downloader'''
         
         p = self.establish(a, site)
         
@@ -684,6 +664,8 @@ class scrapers(object):
     @classmethod
     def fourarchive(self, a, site="4archive", uniq=None):
         
+        '''4archive.org Downloader'''
+        
         p = self.establish(a, site)
         
         posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
@@ -699,12 +681,17 @@ class scrapers(object):
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
                 url = utils.fix_url(fi.find("a")['href'])
                 
+                if url.startswith('/data/'):
+                    url = (utils.re_find(variables.sites_regex_table['4archive'], a, 1) + url)
+                
                 queue.file(site, uniq, url, filename, download.download_type['generic'])
                 
         return self.box
     
     @classmethod
     def fourchan(self, a, site="4chan", uniq=None):
+        
+        '''4chan.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -728,6 +715,8 @@ class scrapers(object):
     @classmethod
     def eightchan(self, a, site="8chan", uniq=None):
         
+        '''8ch.net (Infinitychan) Downloader'''
+        
         p = self.establish(a, site)
         
         fi = p.findAll("p", {"class" : "fileinfo"})
@@ -744,6 +733,8 @@ class scrapers(object):
 
     @classmethod
     def fourplebs(self, a, site="4plebs", uniq=None):
+        
+        '''4plebs.org Downloader'''
         
         p = self.establish(a, site)
         
@@ -784,36 +775,48 @@ class ibdl(object):
                 pass
         
     def download(self, site, uniq, url, name=None, dtype=download.download_type['generic']):
+        
+        '''This will assign a download function to the current item and download it'''
 
-        if name is None: name = (url.split('/')[len(url.split('/'))-1])
+        # If the item doesn't have a name we strip the filename from the URL and use that
+        if name is None:
+            name = (url.split('/')[len(url.split('/'))-1])
         else: name = (utils.sanitize_filename(name))
                 
+        # Where we are going to save the item 
         destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
         
         if not os.path.exists(destination):
-            
+            # Create base directory
             self.create_dir(os.path.dirname(destination))
             
+            # Assign a download function and download the item
             if dtype == download.download_type['cloudflare']: return download.cloudflare(site, url, destination, name)
             elif dtype == download.download_type['generic']: return download.generic(site, url, destination, name)
             elif dtype == download.download_type['content-disposition']: return download.contentdisposition(site, url, destination, name)
             else: return download.generic(site, url, destination, name)
             
-        else: return [variables.dict_return_codes['skip'], 'Skipped {}'.format(destination)]
+        else:
+            # If the item (destionation) already exists we skip it
+            return [variables.dict_return_codes['skip'], 'Skipped {}'.format(destination)]
         
     def detect_site(self):
+        
+        '''Match the passed URL against the regex table to find what site we are dealing with'''
         
         for s, r in variables.sites_regex_table.items():
             match = re.search(r, self.current_url)
             
-            if match:
-                
+            if match: 
                 self.imageboard_name = variables.imageboard_name = s
                 report(s, self.current_url)
                 
-        if self.imageboard_name is None: raise ErrorNotSupported
+        if self.imageboard_name is None:
+            raise ErrorNotSupported
         
     def get_function(self, site):
+        
+        '''Returns the scraper function we are going to use'''
         
         for s, r in variables.dict_number_converter.items():
             site = str.replace(site, s, r)
@@ -826,15 +829,15 @@ class ibdl(object):
         count = 2
         
         if cdir is not None:
-            
             for c, q in enumerate(lst[1]):
                 lst[1][c] = cdir
             
         for i, x in enumerate(lst[3]):
-            
+            # Check if a item (file) has a duplicate - if so rename it
             if lst[3][i] not in temp:
                 temp.append(lst[3][i])
             else:
+                # Rename
                 file = os.path.splitext(lst[3][i])
                 temp.append('{}({}){}'.format(file[0], str(count), file[1]))
                 count += 1
@@ -844,10 +847,14 @@ class ibdl(object):
         return lst
     
     def download_images(self, items, current_item = 0):
-                    
+        
+        '''Download the items returned from the scraper'''
+                  
+        # Start a new pool  
         pool = mp.Pool()
         results = []
         
+        # Start download processes
         r = [pool.apply_async(self.download, (main_item,
                                               items[1][x],
                                               items[2][x],
@@ -856,6 +863,7 @@ class ibdl(object):
                                               ), 
                               callback = results.append) for x, main_item in enumerate(items[0])]
         
+        # While it's downloading we display the progress
         while len(results) < len(items[0]):
             
             if len(results) > current_item:
@@ -866,12 +874,14 @@ class ibdl(object):
                     string_code = utils.return_code_to_string(code)
                     work_report = results[len(results) - 1][1]
                     
+                    # Print the current item and total progress
                     if work_report is not False:
                         count = utils.format_count(len(items[0]), current_item)
                         report(string_code, '{} - {}'.format(count, work_report))
                     
         return_codes = []
         
+        # Print the final results
         for i in range(0, len(results)):
             return_codes.append(results[i][0])
         
@@ -897,23 +907,30 @@ def main():
     parser.add_argument('-s', dest='s', action='store_true', help='Display the available scrapers (Supported sites)', required = False)
     parser.add_argument('-v', dest='v', action='store_true', help='Show current version', required = False)
 
+    # Retrieve arguments
     args = parser.parse_args() 
 
     try: 
+        # Print current version
         if args.v:
             report('version', variables.version); sys.exit(0)
         
+        # Print supported sites
         if args.s:
             utils.get_supported_sites(); sys.exit(0)
             
-        if len(args.urls) is 0:
+        # Check if URL(s) were passed, if so go through them and if not exit
+        if len(args.urls) == 0:
+            # Exit
             report('info', 'No URLs were passed - exiting'); sys.exit(0)
         else:
+            # Go through URL(s)
             for url in args.urls:
                 scraper = ibdl(url, args.destination, args.directory_name)
        
-    except ErrorRequest:
-        report('error', 'Error requesting page')
+    # Exceptions
+    except ErrorRequest as e:
+        report('error', 'Error requesting page (code: {})'.format(e))
 
     except ErrorNotSupported:
         report('error', 'Unsupported URL')
