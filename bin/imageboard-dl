@@ -4,7 +4,7 @@
 '''
 imageboard-dl
 
-usage imageboard-dl [-h] [-v] [-s] URL(s) [-d PATH] [-dd DIRECTORY]
+usage imageboard-dl [-h] [-v] [-s] [-d PATH] [-dd DIRECTORY] URL(s)
 
 @sixem
 '''
@@ -39,7 +39,8 @@ class variables():
     # Default save directory ($HOME/Downloads)
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
-    version = "1.0.51 - 2016.08.10"
+    # Current Version Y/M/D
+    version = "1.0.52 - 2016.09.10"
     
     # General values
     general_vars = {
@@ -60,21 +61,20 @@ class variables():
 
     # Regex table used to identify URLs being passed
     sites_regex_table = {
-        '2ch.hk': '((https?:\/\/)2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '4archive': '(https?:\/\/(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
-        '4chan': '((https?:\/\/)boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        '4plebs': '((https?:\/\/)archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        '7chan.org': '((https?:\/\/)7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '8chan': '((https?:\/\/)8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        'arhivach': '((https?:\/\/)arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-        'librechan': '((https?:\/\/)librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        'masterchan': '((https?:\/\/)masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        'imgur:album': 'https?:\/\/imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
-        'wizchan': '(https?:\/\/)wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
-        '16chan.nl': '(https?:\/\/)16chan.nl\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
-        'warosu.org': '(https?://warosu.org/([A-Za-z0-9]{1,})/thread/([0-9]{1,}))',
-        'archived.moe': 'https?://archived?.moe/([A-Za-z0-9]{1,})/thread/([0-9]{1,})/',
-        'vsco.co:user': 'https?://vsco.co/.*'
+        '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
+        '4chan': '((https?:\/\/)(?:www.)?boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '8chan': '((https?:\/\/)(?:www.)?8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
+        'librechan': '((https?:\/\/)(?:www.)?librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        'masterchan': '((https?:\/\/)(?:www.)?masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        'imgur:album': 'https?:\/\/(?:www.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
+        'wizchan': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
+        'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
+        'foolfuuka': 'https?:\/\/(?:www.)?(archived?\.moe|5\.189\.144\.13)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
+        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*'
         }
 
     # Possible reasons for a error code (requests)
@@ -367,7 +367,7 @@ class scrapers(object):
     @classmethod
     def vsco_coxuser(self, a, site="vsco.co:user", uniq=None):
         
-        '''vsco.co (only user pictures) Downloader'''
+        '''vsco.co (user pictures) Downloader'''
         
         is_media_link = utils.re_find('https?:\/\/vsco.co\/(.*)\/media\/[A-Za-z0-9]{1,}', a, 1)
         if is_media_link is not False: a = 'https://vsco.co/{}/'.format(is_media_link)
@@ -397,32 +397,40 @@ class scrapers(object):
         return self.box
         
     @classmethod
-    def archived_moe(self, a, site="archived.moe", uniq=None):
+    def foolfuuka(self, a, site="foolfuuka", uniq=None):
         
-        '''archived.moe Downloader'''
+        '''FoolFuuka Downloader'''
         
         p = self.establish(a, site)
         
-        redirect = [[], []]
+        post_link = [[], []]
+        
         posts = p.findAll("a", {"class" : "post_file_filename"})
         uniq = p.find("article", {"class" : "thread"})['id'].__str__()
         
         for post in posts:
             
-            if post.has_attr('title'): filename = post['title']
-            else: filename = post.contents[0]
+            if post.has_attr('title'):
+                filename = post['title']
+            else:
+                filename = post.contents[0]
             
-            redirect[0].append(str(post['href']))
-            redirect[1].append(filename)
+            post_link[0].append(str(post['href']))
+            post_link[1].append(filename)
             
-        report('info', 'Fetching redirect URLs ..')
+        say_redirect = False
         
-        for x, url in enumerate(redirect[0]):
-            p = self.establish(url, site, bs=False, rb=False, v=False)
-            rm = re.search('content="[0-9]{1,}; url=(.*)">', p)
-            
-            if rm:
-                queue.file(site, uniq, rm.group(1), redirect[1][x], download.download_type['cloudflare'])
+        for x, url in enumerate(post_link[0]):
+            if ('/redirect/') in url:
+                if say_redirect is False:
+                    report('info', 'Collecting redirection data ..'); say_redirect = True
+                p = self.establish(url, site, bs=False, rb=False, v=False)
+                rm = re.search('content="[0-9]{1,}; url=(.*)">', p)
+                if rm:
+                    queue.file(site, uniq, rm.group(1), post_link[1][x], download.download_type['cloudflare'])
+            else:
+                print(2)
+                queue.file(site, uniq, url, post_link[1][x], download.download_type['cloudflare'])
                 
         return self.box
         
@@ -465,25 +473,6 @@ class scrapers(object):
         return self.box
         
     @classmethod
-    def onesixchan_nl(self, a, site="16chan", uniq=None):
-        
-        '''16chan.nl Downloader'''
-        
-        p = self.establish(a, site)
-        
-        alinks = p.findAll("a", {"class" : "attachment-link"})
-        op = p.find("div", {"class" : "op-container"})
-        uniq = op['data-board_uri'].__str__() + op['data-board_id'].__str__()
-        
-        for link in alinks:
-            url = 'https://16chan.nl' + link['href'].__str__()
-            filename = utils.get_filename_from_url(url)
-            
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
-        return self.box
-        
-    @classmethod
     def wizchan(self, a, site="wizchan", uniq=None):
         
         '''wizchan.org Downloader'''
@@ -518,8 +507,12 @@ class scrapers(object):
         
         report('info', 'album \'{}\' has {} image(s) ..'.format(img_json['title'], img_json['num_images']))
         
-        for image in img_json['album_images']['images']:
-            filename = '{}{}'.format(image['hash'], image['ext'])
+        p = self.establish('http://imgur.com/ajaxalbums/getimages/{}/hit.json'.format(uniq), site, bs=False)
+        img_json = utils.get_json(p)
+        
+        for image in img_json['data']['images']:
+            extension = ''.join([i for i in image['ext'] if not i.isdigit()])
+            filename = '{}{}'.format(image['hash'], extension)
             url = 'https://i.imgur.com/{}'.format(filename)
             
             queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
@@ -608,7 +601,7 @@ class scrapers(object):
                     url = 'https://arhivach.org/' + img['href'].__str__()
                     filename = img.contents[0].__str__()
                     
-                if img['href'].startswith('https://'):
+                if img['href'].startswith('https://') or img['href'].startswith('http://'):
                     url = img['href'].__str__()
                     filename = img.contents[0].__str__()
                     
@@ -781,7 +774,8 @@ class ibdl(object):
         # If the item doesn't have a name we strip the filename from the URL and use that
         if name is None:
             name = (url.split('/')[len(url.split('/'))-1])
-        else: name = (utils.sanitize_filename(name))
+        else:
+            name = (utils.sanitize_filename(name))
                 
         # Where we are going to save the item 
         destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
@@ -853,6 +847,8 @@ class ibdl(object):
         # Start a new pool  
         pool = mp.Pool()
         results = []
+        
+        report('info', 'Downloading to: ' + variables.save_directory)
         
         # Start download processes
         r = [pool.apply_async(self.download, (main_item,
