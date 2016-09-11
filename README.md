@@ -14,4 +14,4 @@ Python based image downloader for various imageboards and image albums.
 + Python 3+
 
 # Usage
-`imageboard-dl https://boards.4chan.org/hr/thread/123456`
+`imageboard-dl [-h] [-v] [-s] [-d PATH] [-dd DIRECTORY] URL(s)`
