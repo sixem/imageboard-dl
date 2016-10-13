@@ -40,7 +40,7 @@ class variables():
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     # Current Version Y/M/D
-    version = "1.0.52 - 2016.09.10"
+    version = "1.0.53 - 2016.10.13"
     
     # General values
     general_vars = {
@@ -70,11 +70,12 @@ class variables():
         'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
         'librechan': '((https?:\/\/)(?:www.)?librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'masterchan': '((https?:\/\/)(?:www.)?masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        'imgur:album': 'https?:\/\/(?:www.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
+        'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
         'wizchan': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
         'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
-        'foolfuuka': 'https?:\/\/(?:www.)?(archived?\.moe|5\.189\.144\.13)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
-        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*'
+        'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
+        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*',
+        'sli.mg:album': 'https?:\/\/sli.mg\/a\/([0-9A-Za-z]{1,})'
         }
 
     # Possible reasons for a error code (requests)
@@ -388,11 +389,10 @@ class scrapers(object):
             
             for post in ajax_json['media']:
                 url = ('https://' + post['responsive_url'])
-                
                 queue.file(site, user, url, utils.get_filename_from_url(url), download.download_type['generic'])
                 
         except KeyError:
-            report('error', 'could not find session cookie')
+            report('error', 'Could not find session cookie')
         
         return self.box
         
@@ -429,7 +429,6 @@ class scrapers(object):
                 if rm:
                     queue.file(site, uniq, rm.group(1), post_link[1][x], download.download_type['cloudflare'])
             else:
-                print(2)
                 queue.file(site, uniq, url, post_link[1][x], download.download_type['cloudflare'])
                 
         return self.box
@@ -502,20 +501,25 @@ class scrapers(object):
         
         p = self.establish(a, site, bs=False)
         
-        img_json = utils.get_json(utils.re_find('image[ ]{2,}: ({.*})', p, 1))
-        uniq = img_json['hash']
+        album_json = utils.get_json(utils.re_find('image[ ]{2,}: ({.*})', p, 1))
+        uniq = album_json['hash']
         
-        report('info', 'album \'{}\' has {} image(s) ..'.format(img_json['title'], img_json['num_images']))
-        
-        p = self.establish('http://imgur.com/ajaxalbums/getimages/{}/hit.json'.format(uniq), site, bs=False)
-        img_json = utils.get_json(p)
-        
-        for image in img_json['data']['images']:
-            extension = ''.join([i for i in image['ext'] if not i.isdigit()])
-            filename = '{}{}'.format(image['hash'], extension)
-            url = 'https://i.imgur.com/{}'.format(filename)
+        if album_json['is_album'] == True:
             
-            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
+            report('info', 'album \'{}\' has {} image(s) ..'.format(album_json['title'], album_json['num_images']))
+        
+            p = self.establish('http://imgur.com/ajaxalbums/getimages/{}/hit.json'.format(uniq), site, bs=False, v=False)
+            album_json = utils.get_json(p)
+        
+            for image in album_json['data']['images']:
+                extension = ''.join([i for i in image['ext'] if not i.isdigit()])
+                filename = '{}{}'.format(image['hash'], extension)
+                url = 'https://i.imgur.com/{}'.format(filename)
+            
+                queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
+            
+        else:
+            report('info', 'This is not a album.')
             
         return self.box
         
@@ -623,7 +627,12 @@ class scrapers(object):
         
         for f in fi:
             url = 'https://librechan.net{0}'.format(f.find("a")['href'].__str__())
-            filename = f.find("a").contents[0].__str__()
+            filename = None
+            
+            try:
+                filename = f.find("span", {"class" : "postfilename"}).contents[0].__str__()
+            except (AttributeError, KeyError):
+                filename = f.find("a").contents[0].__str__()
             
             queue.file(site, uniq, url, filename, download.download_type['generic'])
             
@@ -736,7 +745,22 @@ class scrapers(object):
         
         for link in image_links:
             url = link['href'].__str__()
+            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
             
+        return self.box
+    
+    @classmethod
+    def sli_mgxalbum(self, a, site="sli.mg", uniq=None):
+        
+        '''sli.mg Downloader'''
+        
+        p = self.establish(a, site)
+        
+        image_links = p.findAll("div", {"class" : "egrpimg"})
+        uniq = utils.re_find(variables.sites_regex_table['sli.mg:album'], a, 1)
+        
+        for link in image_links:
+            url = link.find("a")['href'].__str__()
             queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
             
         return self.box
@@ -848,7 +872,8 @@ class ibdl(object):
         pool = mp.Pool()
         results = []
         
-        report('info', 'Downloading to: ' + variables.save_directory)
+        if len(items[0]) > 0:
+            report('info', 'Downloading to: ' + variables.save_directory)
         
         # Start download processes
         r = [pool.apply_async(self.download, (main_item,
@@ -896,12 +921,15 @@ class ErrorParsingJson(Exception):
     '''Raised if encountering an error when extracting and or parsing a json object'''
 
 def main():
+    if not (sys.version_info > (3, 0)):
+        report('info', 'This script requires Python 3+'); sys.exit(0)
+          
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
-    parser.add_argument('urls', default = [], nargs = '*', help = 'One or more URLs to scrape') 
-    parser.add_argument('-d', dest = 'destination', default = None, help = 'Where to save images (Path)', required = False)
-    parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'Where to save images (Directory name)', required = False)
-    parser.add_argument('-s', dest='s', action='store_true', help='Display the available scrapers (Supported sites)', required = False)
-    parser.add_argument('-v', dest='v', action='store_true', help='Show current version', required = False)
+    parser.add_argument('urls', default = [], nargs = '*', help = 'one or more URLs to scrape') 
+    parser.add_argument('-d', dest = 'destination', default = None, help = 'where to save images (path)', required = False)
+    parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'where to save images (directory name)', required = False)
+    parser.add_argument('-s', dest='s', action='store_true', help='display the available scrapers (supported sites)', required = False)
+    parser.add_argument('-v', dest='v', action='store_true', help='show current version', required = False)
 
     # Retrieve arguments
     args = parser.parse_args() 
