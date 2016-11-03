@@ -40,19 +40,19 @@ class variables():
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     # Current Version Y/M/D
-    version = "1.0.53 - 2016.10.13"
+    version = "1.0.54 - 2016.11.3"
     
     # General values
     general_vars = {
         'cfs_timeout': 120,
         'dir_frmt': '{}-{}',
         'connest_frmt': 'Connection established ..',
-        'connest_frmt_ip': 'Connection established .. ({}:{})'
+        'connest_frmt_ip': 'Connection established ({}:{}) ..'
         }
 
     # Request headers
     req_headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/47.0 (Chrome)',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/50.0 (Chrome)',
         'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Encoding': 'gzip, deflate',
@@ -68,7 +68,6 @@ class variables():
         '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '8chan': '((https?:\/\/)(?:www.)?8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-        'librechan': '((https?:\/\/)(?:www.)?librechan.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'masterchan': '((https?:\/\/)(?:www.)?masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
         'wizchan': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
@@ -616,50 +615,24 @@ class scrapers(object):
         return self.box
 
     @classmethod
-    def librechan(self, a, site="librechan", uniq=None):
-        
-        '''librechan.net Downloader'''
-        
-        p = self.establish(a, site)
-        
-        fi = p.findAll("p", {"class" : "fileinfo"})
-        uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id'].__str__()
-        
-        for f in fi:
-            url = 'https://librechan.net{0}'.format(f.find("a")['href'].__str__())
-            filename = None
-            
-            try:
-                filename = f.find("span", {"class" : "postfilename"}).contents[0].__str__()
-            except (AttributeError, KeyError):
-                filename = f.find("a").contents[0].__str__()
-            
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
-        return self.box
-
-    @classmethod
-    #Should probably use https://2ch.hk/*/res/*.json to grab thread data in the future
     def twoch_hk(self, a, site="2ch.hk", uniq=None):
         
         '''2ch.(hk, pm, re, tf, wf, yt, so) Downloader'''
         
-        p = self.establish(a, site)
-        
         rm = re.search(variables.sites_regex_table['2ch.hk'], a)
-        uniq = rm.group(5)
-        const_url = ('{}2ch.hk/{}/src/{}/'.format(rm.group(2), rm.group(3), rm.group(5)))
-        posts = p.findAll("div", {"class" :
-            ["post-wrapper", "oppost-wrapper"]})
+        uniq = rm.group(3) + rm.group(5)
         
-        for post in posts:
-            desks = post.findAll("a", {"class" : ["desktop"]})
-            
-            for desk in desks:
-                url = const_url + desk.contents[0].__str__()
-                filename = desk.contents[0].__str__()
-                
-                queue.file(site, uniq, url, filename, download.download_type['generic'])
+        json_url = ('{}2ch.hk/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
+
+        p = self.establish(json_url, site, bs=False)
+        
+        json_data = utils.get_json(p)
+        
+        for t in json_data['threads']:
+            for i in t['posts']:
+                for file in i['files']:
+                    path_url = ('{}2ch.hk/{}/{}'.format(rm.group(2), rm.group(3), file['path']))
+                    queue.file(site, uniq, path_url, file['fullname'], download.download_type['generic'])
                 
         return self.box
     
