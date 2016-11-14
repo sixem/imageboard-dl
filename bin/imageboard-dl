@@ -40,7 +40,7 @@ class variables():
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     # Current Version Y/M/D
-    version = "1.0.54 - 2016.11.3"
+    version = "1.0.55 - 2016.11.14"
     
     # General values
     general_vars = {
@@ -213,6 +213,9 @@ class utils():
             num /= 1024.0
             
         return "%.1f %s%s" % (num, 'Yi', suffix)
+    
+    def simplifiy_string(str):
+        return str.lower().replace(' ', '_')
     
     def get_supported_sites(sites = []):
         
@@ -563,10 +566,17 @@ class scrapers(object):
         p = self.establish(a, site)
         
         media = p.findAll("span", {"class" : "mediaFileAttrb"})
-        uniq = p.find("input", {"name" : "fromThreadNumber"})['value']
+        t_num = p.find("input", {"name" : ["fromThreadNumber", "replyThreadNumber"]})['value']
+        
+        try:
+            board = p.find("a", {"class" : "boardLink"})['title']
+        except:
+            board = None
+        
+        uniq = '{}-{}'.format(utils.simplifiy_string(board), t_num)
         
         for m in media:
-            filename = m.find("span", {"class" : "mediaFileName"}).contents[0].__str__()
+            filename = m.find("span", {"class" : "mediaFileName"})['title'].__str__()
             url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
             
             queue.file(site, uniq, url, filename, download.download_type['generic'])
@@ -631,7 +641,7 @@ class scrapers(object):
         for t in json_data['threads']:
             for i in t['posts']:
                 for file in i['files']:
-                    path_url = ('{}2ch.hk/{}/{}'.format(rm.group(2), rm.group(3), file['path']))
+                    path_url = ('{}2ch.hk{}'.format(rm.group(2), file['path']))
                     queue.file(site, uniq, path_url, file['fullname'], download.download_type['generic'])
                 
         return self.box
@@ -754,11 +764,10 @@ class ibdl(object):
         self.download_images(self.check_list(getattr(scrapers, 
             self.get_function(self.imageboard_name))(a=site), cdir=dirn))  
     
-    def create_dir(self, a):
-        
+    def create_destination(self, a):
         if not os.path.exists(a):
             try:
-                os.makedirs(a) 
+                os.makedirs(a)
             except PermissionError:
                 raise ErrorCreatingDirectory
             except:
@@ -778,8 +787,8 @@ class ibdl(object):
         destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
         
         if not os.path.exists(destination):
-            # Create base directory
-            self.create_dir(os.path.dirname(destination))
+            # Create base directory if it doesn't exist
+            self.create_destination(os.path.dirname(destination))
             
             # Assign a download function and download the item
             if dtype == download.download_type['cloudflare']: return download.cloudflare(site, url, destination, name)
@@ -846,7 +855,10 @@ class ibdl(object):
         results = []
         
         if len(items[0]) > 0:
-            report('info', 'Downloading to: ' + variables.save_directory)
+            if items[1][1:] == items[1][:-1]:
+                report('info', os.path.normpath('Downloading to: {}/{}'.format(variables.save_directory, items[1][0])))
+            else:
+                report('info', 'Downloading to: ' + variables.save_directory)
         
         # Start download processes
         r = [pool.apply_async(self.download, (main_item,
