@@ -15,6 +15,7 @@ import multiprocessing as mp
 import re
 import os
 import json
+from requests import exceptions
 try:
     from urllib.request import urlopen
     from urllib.parse import urlparse
@@ -40,7 +41,7 @@ class variables():
     save_directory = '{}/Downloads'.format(expanduser("~"))
     
     # Current Version Y/M/D
-    version = "1.0.55 - 2016.11.14"
+    version = "1.0.56 - 2016.12.21"
     
     # General values
     general_vars = {
@@ -214,6 +215,13 @@ class utils():
             
         return "%.1f %s%s" % (num, 'Yi', suffix)
     
+    def request_code_to_string(code):
+        status_codes = requests.status_codes._codes[code]
+        if len(status_codes) > 0:
+            return requests.status_codes._codes[code][0].capitalize()
+        else:
+            return False
+    
     def simplifiy_string(str):
         return str.lower().replace(' ', '_')
     
@@ -279,8 +287,7 @@ class utils():
     def get_json(js):
         
         try:
-            jso = json.loads(js)
-            return jso
+            return json.loads(js)
         except:
             raise ErrorParsingJson
     
@@ -341,9 +348,9 @@ class scrapers(object):
     @classmethod
     def establish(self, a, site, v=True, bs=True, rb=True, ra=False):
         
+        request = self.request(a)
+        
         try:
-            request = self.request(a)
-            
             if rb is True:
                 self.box = [[], [], [], [], []]
                 
@@ -638,11 +645,15 @@ class scrapers(object):
         
         json_data = utils.get_json(p)
         
-        for t in json_data['threads']:
-            for i in t['posts']:
-                for file in i['files']:
-                    path_url = ('{}2ch.hk{}'.format(rm.group(2), file['path']))
-                    queue.file(site, uniq, path_url, file['fullname'], download.download_type['generic'])
+        for post in json_data['threads'][0]['posts']:
+            for file in post['files']:
+                try:
+                    filename = file['fullname']
+                except KeyError:
+                    filename = file['path'].split('/')[int(file['path'].count('/'))]
+                    
+                url = ('{}2ch.hk{}'.format(rm.group(2), file['path']))
+                queue.file(site, uniq, url, filename, download.download_type['generic'])
                 
         return self.box
     
@@ -938,8 +949,17 @@ def main():
                 scraper = ibdl(url, args.destination, args.directory_name)
        
     # Exceptions
-    except ErrorRequest as e:
-        report('error', 'Error requesting page (code: {})'.format(e))
+    except ErrorRequest as exception:
+        error_code = int(str(exception))
+        status_code = utils.request_code_to_string(error_code)
+        
+        if status_code is not False:
+            report('error', 'Error requesting page (code: {} - {})'.format(error_code, status_code))
+        else:
+            report('error', 'Error requesting page (code: {})'.format(error_code))
+            
+        if error_code in variables.possible_reasons:
+            report('info', 'Possible reasons: ' + variables.possible_reasons[error_code][0])
 
     except ErrorNotSupported:
         report('error', 'Unsupported URL')
