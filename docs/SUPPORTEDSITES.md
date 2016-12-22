@@ -3,7 +3,7 @@
 + 4archive
 + 4chan
 + 4plebs
-+ + 7chan.org
++ 7chan.org
 + 8chan
 + archived.moe
 + archiveofsins
