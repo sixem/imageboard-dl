@@ -1,10 +1,10 @@
 # Imageboard-DL
-Image downloader script for various imageboards and image albums written in Python. 
+**Image downloader script for various imageboards and image albums written in Python.**
 
 ### Requirements
 + Python 3+
 
-## Installing
+# Installing
 ## Git
 + `git clone https://github.com/sixem/imageboard-dl`
 + `cd imageboard-dl`
