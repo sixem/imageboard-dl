@@ -8,9 +8,10 @@
 + archived.moe
 + archiveofsins
 + arhivach
++ brchan
 + imgur:album
-+ masterchan
++ krautchan
 + sli.mg:album
 + vsco.co:user
 + warosu.org
-+ wizchan
++ wizchan.org
