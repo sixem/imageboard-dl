@@ -7,8 +7,11 @@ Image downloader for various imageboards and image albums written in Python.
 + `cd imageboard-dl`
 + `python3 setup.py install`
 
-## PyPi
+## Install From PyPI (Python Package Index)
+### Using Pip
 + `pip3 install imageboard-dl`
+### Using EasyInstall
++ `easy_install3 imageboard-dl`
 
 # Requirements
 + Python 3+
