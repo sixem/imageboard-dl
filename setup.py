@@ -1,11 +1,10 @@
-
 from setuptools import setup
 
-setup(name="imageboard-dl",��
+setup(name="imageboard-dl",
 	version="1.0.57",
 	description="Python based image downloader for various imageboards and online image albums.",
 	url="https://github.com/sixem/imageboard-dl",
-	author="sixem",
+	author="bentkrisell",
 	author_email="sixem.mb99@gmail.com",
 	license='MIT',
 	packages=["imageboard-dl"],
