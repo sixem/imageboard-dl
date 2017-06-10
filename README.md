@@ -18,13 +18,8 @@ Image downloader script for various imageboards and image albums written in Pyth
 
 # Usage
 `imageboard-dl [-h] [-v] [-s] [-d PATH] [-dd DIRECTORY] URL(s)`
-+ #### **-h**
-`Help`
-+ #### **-v**
-`Print the current version`
-+ #### **-s**
-`Show a list of supported sites`
-+ #### **-d**
-`Where to download to (By default it will use your current working directory)`
-+ #### **-dd**
-`What the last directory will be named, by default it will be a unique name to distinguish it from other scraped threads`
++ `-h` : Help.
++ `-v` : Print the current version.
++ `-s` : Show a list of supported sites.
++ `-d` : Where to download to (By default it will use your current working directory).
++ `-dd`: What the last directory will be named, by default it will be a unique name to distinguish it from other scraped threads.
