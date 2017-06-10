@@ -11,17 +11,16 @@ usage imageboard-dl [-h] [-v] [-s] [-d PATH] [-dd DIRECTORY] URL(s)
 
 from bs4 import BeautifulSoup
 from os.path import expanduser
+
 import multiprocessing as mp
 import re
 import os
 import json
+
 from requests import exceptions
-try:
-    from urllib.request import urlopen
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
-    from urllib import urlopen
+from urllib.request import urlopen
+from urllib.parse import urlparse
+
 import requests
 import shutil
 import cfscrape
@@ -37,11 +36,11 @@ def report(site, message):
 class variables():
     imageboard_name = None
     
-    # Default save directory ($HOME/Downloads)
-    save_directory = '{}/Downloads'.format(expanduser("~"))
+    # Default save directory (current working directory)
+    save_directory = os.getcwd()
     
-    # Current Version Y/M/D
-    version = "1.0.56 - 2016.12.21"
+    # Current Version - D/M/Y
+    version = "1.0.57 - 10.06.2017"
     
     # General values
     general_vars = {
@@ -69,9 +68,10 @@ class variables():
         '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '8chan': '((https?:\/\/)(?:www.)?8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-        'masterchan': '((https?:\/\/)(?:www.)?masterchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+        'brchan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
-        'wizchan': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
+        'krautchan': '(https?:\/\/krautchan\.net\/([A-Za-z]{1,5})\/thread-([0-9]{1,})\.html)',
+        'wizchan.org': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
         'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
         'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
         'vsco.co:user': 'https?://(?:www.)?vsco.co/.*',
@@ -175,7 +175,6 @@ class download():
             req = requests.get(url, headers=variables.req_headers, 
                                timeout=variables.general_vars['cfs_timeout'])
             size = utils.sizeof_fmt(int(req.headers['content-length']))
-            
             if req.status_code == 200:
                 
                 rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
@@ -218,7 +217,7 @@ class utils():
     def request_code_to_string(code):
         status_codes = requests.status_codes._codes[code]
         if len(status_codes) > 0:
-            return requests.status_codes._codes[code][0].capitalize()
+            return (requests.status_codes._codes[code][0].capitalize()).replace('_', ' ')
         else:
             return False
     
@@ -396,12 +395,18 @@ class scrapers(object):
             ajax_json = utils.get_json(request[0])
             report('info', 'user \'{}\' has {} post(s)'.format(user, ajax_json['total']))
             
+            print(ajax_json)
+            
             for post in ajax_json['media']:
-                url = ('https://' + post['responsive_url'])
+                if 'video_url' in post:
+                    url = 'https://' + post['video_url']
+                else:
+                    url = 'https://' + post['responsive_url']
+                    
                 queue.file(site, user, url, utils.get_filename_from_url(url), download.download_type['generic'])
                 
         except KeyError:
-            report('error', 'Could not find session cookie')
+            report('error', 'Could not retrieve ajax data')
         
         return self.box
         
@@ -481,11 +486,11 @@ class scrapers(object):
         return self.box
         
     @classmethod
-    def wizchan(self, a, site="wizchan", uniq=None):
+    def wizchan_org(self, a, site="wizchan.org", uniq=None):
         
         '''wizchan.org Downloader'''
         
-        rm = re.search(variables.sites_regex_table['wizchan'], a)
+        rm = re.search(variables.sites_regex_table['wizchan.org'], a)
         
         if rm:
             url = '{}wizchan.org/{}/res/{}.json'.format(rm.group(1), rm.group(2), rm.group(3))
@@ -533,6 +538,33 @@ class scrapers(object):
         return self.box
         
     @classmethod
+    def krautchan(self, a ,site="krautchan", uniq=None):
+    
+        '''krautchan.net Downloader'''
+        
+        p = self.establish(a, site)
+        
+        uniq = str(str(p.find("input", {"name" : "board"})['value'] + p.find("input", {"name" : "parent"})['value']))
+        
+        posts = p.findAll("div", {"class" : "file_reply"})
+        
+        op_header = p.find("div", {"class" : "file_thread"})
+        op_url = 'http://krautchan.net' + op_header.findAll("a")[0]['href']
+        op_post = p.find("span", {"class" : "filename"}).find("a")['href']
+        
+        queue.file(site, uniq, op_url, utils.get_filename_from_url(op_url), download.download_type['cloudflare'])
+        
+        for post in posts:
+            
+            filename = post.findAll("span")[0].text
+            
+            url = 'http://krautchan.net' + post.find("span", {"class" : "filename"}).find("a")['href']
+            
+            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
+
+        return self.box
+        
+    @classmethod
     def sevenchan_org(self, a ,site="7chan.org", uniq=None):
         
         '''7chan.org Downloader'''
@@ -560,31 +592,6 @@ class scrapers(object):
             
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
-            
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
-        return self.box
-    
-    @classmethod
-    def masterchan(self, a, site="masterchan", uniq=None):
-        
-        '''masterchan.org Downloader'''
-        
-        p = self.establish(a, site)
-        
-        media = p.findAll("span", {"class" : "mediaFileAttrb"})
-        t_num = p.find("input", {"name" : ["fromThreadNumber", "replyThreadNumber"]})['value']
-        
-        try:
-            board = p.find("a", {"class" : "boardLink"})['title']
-        except:
-            board = None
-        
-        uniq = '{}-{}'.format(utils.simplifiy_string(board), t_num)
-        
-        for m in media:
-            filename = m.find("span", {"class" : "mediaFileName"})['title'].__str__()
-            url = m.find("a", {"class" : "hyperlinkMediaFileName"})['href'].__str__()
             
             queue.file(site, uniq, url, filename, download.download_type['generic'])
             
@@ -626,6 +633,36 @@ class scrapers(object):
                     filename = img.contents[0].__str__()
                     
             if url is not None:
+                
+                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                
+        return self.box
+        
+    @classmethod
+    def brchan(self, a, site="brchan", uniq=None):
+        
+        '''brchan.org Downloader'''
+        
+        rm = re.search(variables.sites_regex_table['brchan'], a)
+        uniq = rm.group(3) + rm.group(5)
+        
+        json_url = ('{}brchan.org/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
+        
+        p = self.establish(json_url, site, bs=False)
+        
+        json_data = utils.get_json(p)
+        
+        for post in json_data['posts']:
+            if 'md5' in post:
+                
+                u_url = post['tim'] + post['ext']
+                
+                if post['filename'].isspace() is True or len(post['filename']) == 0:
+                    filename = u_url
+                else:
+                    filename = post['filename'] + post['ext']
+                
+                url = '{}brchan.org/{}/src/{}'.format(rm.group(2), rm.group(3), u_url)
                 
                 queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
                 
@@ -965,7 +1002,7 @@ def main():
         report('error', 'Unsupported URL')
         
     except ErrorCreatingDirectory:
-        report('error', 'Error creating directory, do you have the required permissions?')
+        report('error', 'Error creating directory, make sure you have the required permissions')
         
     except ErrorParsingJson:
         report('error', 'Error parsing JSON')
