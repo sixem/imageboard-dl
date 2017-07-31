@@ -24,8 +24,8 @@
 + `-v` : Print the current version.
 + `-s` : Show a list of supported scrapers.
 + `-p` : Where to download to. By default it will use your current working directory.
-+ `-x` : Disables saving files into separate folders (see -d)
-+ `-d`: Name of a separate folder to save files into (this folder will be created inside the path, default is a unique name fetched from the URL). This can be disabled by using `-x`, if so the files will be downloaded directly into the selected path.
++ `-x` : Disables saving files into separate folders (see -d).
++ `-d`: Name of a separate folder for saving files into (this folder will be created inside the path, default is a unique name fetched from the URL). This feature can be disabled by using `-x`, if so the files will be downloaded directly into the selected path instead.
 
 ### Basic usage examaple:
 
