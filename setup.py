@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name="imageboard-dl",
-	version="1.0.57",
+	version="1.0.58",
 	description="Python based image downloader for various imageboards and online image albums.",
 	url="https://github.com/sixem/imageboard-dl",
 	author="bentkrisell",
