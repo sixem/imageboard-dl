@@ -28,6 +28,7 @@ import argparse
 import math
 import sys
 import mimetypes
+import hashlib
 
 
 def report(site, message):
@@ -35,13 +36,16 @@ def report(site, message):
 
 class variables():
     imageboard_name = None
-    
+
     # Default save directory (current working directory)
     save_directory = os.getcwd()
-    
+
+    # Use separate save directory or not
+    use_sep_dir = False
+
     # Current Version - D/M/Y
-    version = "1.0.57 - 10.06.2017"
-    
+    version = "1.0.58 - 31.07.2017"
+
     # General values
     general_vars = {
         'cfs_timeout': 120,
@@ -59,24 +63,35 @@ class variables():
         'Accept-Language': 'en-us,en;q=0.5',
         }
 
-    # Regex table used to identify URLs being passed
+    # Regex table used to identify known URLs being passed
     sites_regex_table = {
         '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
         '4chan': '((https?:\/\/)(?:www.)?boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
         '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '8chan': '((https?:\/\/)(?:www.)?8ch.net\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-        'brchan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+        'vichan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
         'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
         'krautchan': '(https?:\/\/krautchan\.net\/([A-Za-z]{1,5})\/thread-([0-9]{1,})\.html)',
-        'wizchan.org': '(https?:\/\/)(?:www.)?wizchan.org\/([A-Za-z]{1,})\/res\/([0-9]{1,}).html',
         'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
         'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
-        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*',
-        'sli.mg:album': 'https?:\/\/sli.mg\/a\/([0-9A-Za-z]{1,})'
+        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*'
         }
+
+    adaptive_regex_table = {
+        'foolfuuka': [
+        '<link rel=[\'"]stylesheet[\'"] type=[\'"]text\/css[\'"] href=[\'"](?:.*)\/foolfuuka\/foolz\/(?:.*)\.css[\'"]>',
+        '<script src=[\'"](?:.*)\/foolfuuka\/foolz\/foolfuuka-(?:.*)\.js[\'"]><\/script>'
+        ],
+
+        'vichan': [
+        '<body class=[\'"][A-Za-z0-9]{1,}? vichan [A-Za-z0-9-]{1,}? [A-Za-z0-9-]{1,}?[\'"] data-stylesheet=[\'"]default[\'"]>',
+        '<a href=[\'"]https?:\/\/([A-Za-z/.]{1,})?vichan\.net([A-Za-z/.]{1,})?[\'"]>vichan<\/a>',
+        '<br>vichan Copyright .{1,10} 20[0-9]{2}-20[0-9]{2} vichan-devel<\/p>'
+        ],
+    }
 
     # Possible reasons for a error code (requests)
     possible_reasons = {
@@ -107,176 +122,229 @@ class variables():
         'error': 4
         }
 
+    valid_filenames = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm']
+
 class download():
-     
+
     # Available downloaders
     download_type = {
         'generic': 1,
         'cloudflare': 2,
         'content-disposition': 3
         }
-    
+
     def generic(site, url, destination, name, x='generic'):
-        
+
         '''Generic Downloader'''
-        
+
         try:
-            req = requests.get(url, headers=variables.req_headers, 
+            req = requests.get(url, headers=variables.req_headers,
                                timeout=variables.general_vars['cfs_timeout'])
-            size = utils.sizeof_fmt(int(req.headers['content-length']))
-            
+            try:
+                size = utils.sizeof_fmt(int(req.headers['content-length']))
+            except:
+                size = False
+
             if req.status_code == 200:
-                
+
                 open(destination, 'wb').write(req.content)
-                
+
                 if os.path.exists(destination):
-                    return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
-                
+                    if size == False:
+                        return [variables.dict_return_codes['download'], name]
+                    else:
+                        return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+
                 else: return [variables.dict_return_codes['error'], False]
             else:
                 return [variables.dict_return_codes['error'], '{}: {}'.format(req.status_code, name)]
-            
-        except:
+
+        except Exception as e:
             return [variables.dict_return_codes['error'], False]
-                
+
     def cloudflare(site, url, destination, name, x='cloudflare'):
-        
+
         '''Cloudflare Downloader'''
-        
+
         try:
-            
+
             cfs = cfscrape.create_scraper()
-            req = cfs.get(url, headers=variables.req_headers, 
+            req = cfs.get(url, headers=variables.req_headers,
                          timeout=variables.general_vars['cfs_timeout'], stream=True)
-            
-            size = utils.sizeof_fmt(int(req.headers['content-length']))
-            
+
+            try:
+                size = utils.sizeof_fmt(int(req.headers['content-length']))
+            except:
+                size = False
+
             if req.status_code == 200:
                 with open(destination, 'wb') as f:
-                    
+
                     req.raw.decode_content = True
                     shutil.copyfileobj(req.raw, f)
-                    
+
                     if os.path.exists(destination):
-                        return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
-                    
+                        if size == False:
+                            return [variables.dict_return_codes['download'], name]
+                        else:
+                            return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+
                     else: return [variables.dict_return_codes['error'], False]
             else:
                 return [variables.dict_return_codes['error'], '{}: {}'.format(req.status_code, name)]
-            
+
         except:
             return [variables.dict_return_codes['error'], False]
-        
+
     def contentdisposition(site, url, destination, name, x='content-disposition'):
-        
+
         '''Content-Disposition (Attachment) Downloader'''
-        
+
         try:
-            req = requests.get(url, headers=variables.req_headers, 
+            req = requests.get(url, headers=variables.req_headers,
                                timeout=variables.general_vars['cfs_timeout'])
-            size = utils.sizeof_fmt(int(req.headers['content-length']))
+
+            try:
+                size = utils.sizeof_fmt(int(req.headers['content-length']))
+            except:
+                size = False
+
             if req.status_code == 200:
-                
+
                 rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
-                
+
                 if rm:
                     open(destination, 'wb').write(req.content)
                     if os.path.exists(destination):
-                        return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
-                    
+                        if size == False:
+                            return [variables.dict_return_codes['download'], name]
+                        else:
+                            return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+
                 else: return [variables.dict_return_codes['error'], False]
-                
+
             else:
                 return [variables.dict_return_codes['error'],'{}: {}'.format(req.status_code, name)]
-            
+
         except:
             return [variables.dict_return_codes['error'], False]
-        
+
 class queue():
     @staticmethod
     def file(site, uniq, url, filename, downloader):
-        
+
         values = [site, utils.const_df(site.replace(':', '_'), uniq), url,
                    utils.sanitize_filename(filename), downloader]
-        
+
         for i in range(0, 5):
             scrapers.box[i].append(values[i])
 
 class utils():
     #https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
     def sizeof_fmt(num, suffix='B'):
-        
+
         for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
-            
+
             if abs(num) < 1024.0:
                 return "%3.1f %s%s" % (num, unit, suffix)
             num /= 1024.0
-            
+
         return "%.1f %s%s" % (num, 'Yi', suffix)
-    
+
     def request_code_to_string(code):
         status_codes = requests.status_codes._codes[code]
         if len(status_codes) > 0:
             return (requests.status_codes._codes[code][0].capitalize()).replace('_', ' ')
         else:
             return False
-    
+
+    def getbetween(a, s, e):
+        return str(a.split(s)[1]).split(')')[0]
+
+    def get_base_url(url):
+        parsed_uri = urlparse(url)
+        return '{uri.scheme}://{uri.netloc}/'.format(uri=parsed_uri)
+
+    def get_unique_number_from_url(url):
+        hash = hashlib.sha224(url.encode('utf-8')).hexdigest()
+        return ''.join(c for c in hash if c.isdigit())[:10]
+
+    def get_simplename_from_url(url):
+        x = urlparse(url)
+        x = '{uri.scheme}://{uri.netloc}/'.format(uri=x)
+        x = x.replace('www.', '')
+        x = x.split('//')[1]
+        x = x.split('.')[0]
+
+        return x
+
+    def validate_image_url(url):
+        for x in variables.valid_filenames:
+            if url.endswith(x):
+                return True
+        return False
+
+    def patch_url(x, a):
+        if (x.startswith('/')) and (a.endswith('/')):
+            a = a[:-1]
+        if x.startswith('/'):
+            return a + x
+        else:
+            return x
+
     def simplifiy_string(str):
         return str.lower().replace(' ', '_')
-    
+
     def get_supported_sites(sites = []):
-        
+
         for i in variables.sites_regex_table: sites.append(i)
-        
+
         sites.sort()
-        
+
         for i in sites: print(i)
-    
+
     def url_to_digits(str, cutoff=0):
-        
+
         if str is None or str == '':
             return 0
-        
+
         out_number = ''
-        
+
         for ele in str:
-            
+
             if ele.isdigit():
                 out_number += ele
-                
+
         return out_number[cutoff:]
-   
-    def getbetween(a, s, e):
-        
-        return str(a.split(s)[1]).split(')')[0]
-    
-    def fix_url(a):
-        
-        if a.startswith('//'): a = 'https:%s' % a
-        
+
+    def clean_url(a):
+
+        if a.startswith('//'):
+            a = 'https:%s' % a
+
         return a
-    
+
     def format_count(total, current):
-        
+
         if len(str(current)) is not len(str(total)):
             current = ('0' * (len(str(total)) - len(str(current)))) + str(current)
-            
+
         return '{}/{}'.format(current, total)
-    
+
     def get_filename_from_url(a):
-        
+
         return a.split('/')[len(a.split('/'))-1]
 
     def const_df(a, b):
-        
+
         return variables.general_vars['dir_frmt'].format(a, b)
-    
+
     def sanitize_filename(fn):
-        
+
         return "".join([c for c in fn if c.isalpha() or c.isdigit() or c==' ' or c=='.' or c=='_']).rstrip()
-    
+
     def return_code_to_string(ncode):
-        
+
         mdict = variables.dict_return_codes
         try:
             return mdict.keys()[mdict.values().index(ncode)]
@@ -284,298 +352,287 @@ class utils():
             return list(mdict.keys())[list(mdict.values()).index(ncode)]
 
     def get_json(js):
-        
+
         try:
             return json.loads(js)
         except:
             raise ErrorParsingJson
-    
+
     def result_to_string(results):
-        
+
         out = ''
-        
+
         if len(results) > 0:
-            
+
             if results.count(variables.dict_return_codes['skip']) > 0:
                 out += ('Downloaded {} file(s), {} file(s) already exists'.format(
                     results.count(variables.dict_return_codes['download']),
                     results.count(variables.dict_return_codes['skip'])))
-                
+
             else: out += ('Downloaded {} file(s)'.format(results.count
                     (variables.dict_return_codes['download'])))
-            
+
             if results.count(variables.dict_return_codes['error']) > 0:
                 out += (' and encountered {} error(s) when downloading'.format(
                     results.count(variables.dict_return_codes['error'])))
-                
+
             return out
         else:
             return ('No result were found')
-        
+
     def re_find(regex, string, group_index):
-        
+
         rm = re.search(regex, string)
-        
+
         if rm:
             return rm.group(group_index)
         else:
             return False
-    
+
 class scrapers(object):
-    
+
     box = [[], [], [], [], []]
-    
+
     @classmethod
     def request(self, url, use_cookies=None):
-        
+
         cfs = cfscrape.create_scraper()
+
         request = cfs.get(url, headers = variables.req_headers,
             timeout = variables.general_vars['cfs_timeout'], cookies = use_cookies, stream=True)
-        
+
         try:
             # Gets the IP of the request
             response_ip = (request.raw._connection.sock.getpeername())
         except:
             response_ip = None
-        
+
         # See if request is good if not raise an error
         if request.status_code is 200:
             return [request.text, request.cookies, response_ip, request]
         else:
             raise ErrorRequest(request.status_code)
-    
+
     @classmethod
     def establish(self, a, site, v=True, bs=True, rb=True, ra=False):
-        
+
         request = self.request(a)
-        
+
         try:
             if rb is True:
                 self.box = [[], [], [], [], []]
-                
+
             if v is True:
                 if request[2] is not None:
                     report(site, variables.general_vars['connest_frmt_ip'].format(request[2][0], request[2][1]))
                 else:
                     report(site, variables.general_vars['connest_frmt'])
-                
+
             if bs is True:
                 if ra is True:
                     return [BeautifulSoup(request[0], "html.parser"), request]
-                else: 
+                else:
                     return BeautifulSoup(request[0], "html.parser")
-            
+
             else:
                 if ra is True:
                     return request
-                else: 
+                else:
                     return request[0]
         except:
             raise ErrorRequest(request[3].status_code)
-        
+
     @classmethod
     def vsco_coxuser(self, a, site="vsco.co:user", uniq=None):
-        
+
         '''vsco.co (user pictures) Downloader'''
-        
+
         is_media_link = utils.re_find('https?:\/\/vsco.co\/(.*)\/media\/[A-Za-z0-9]{1,}', a, 1)
-        if is_media_link is not False: a = 'https://vsco.co/{}/'.format(is_media_link)
-        
+
+        if is_media_link is not False:
+            a = 'https://vsco.co/{}/'.format(is_media_link)
+
         p = self.establish(a, site, ra=True)
-        
+
         user = p[0].find("meta", {"property" : "og:site_name"})['content']
         user = utils.re_find('[a-z]{1,}\.[a-z]{1,}/(.*) \| [A-Z]{1,}', str(user), 1)
-        
+
         id = p[0].find("meta", {"property" : "al:ios:url"})['content']
         id = utils.re_find('\/([0-9]{1,})\/', str(id), 1)
-        
+
         try:
             ajax = 'https://vsco.co/ajxp/{}/2.0/medias?site_id={}&page=1&size=99999'.format(p[1][1]['vs'], id)
             request = self.request(ajax, use_cookies = p[1][1])
             ajax_json = utils.get_json(request[0])
             report('info', 'user \'{}\' has {} post(s)'.format(user, ajax_json['total']))
-            
-            print(ajax_json)
-            
+
             for post in ajax_json['media']:
                 if 'video_url' in post:
                     url = 'https://' + post['video_url']
                 else:
                     url = 'https://' + post['responsive_url']
-                    
+
                 queue.file(site, user, url, utils.get_filename_from_url(url), download.download_type['generic'])
-                
+
         except KeyError:
-            report('error', 'Could not retrieve ajax data')
-        
+            report('error', 'Could not retrieve JSON data')
+
         return self.box
-        
+
     @classmethod
     def foolfuuka(self, a, site="foolfuuka", uniq=None):
-        
+
         '''FoolFuuka Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         post_link = [[], []]
-        
+
         posts = p.findAll("a", {"class" : "post_file_filename"})
-        uniq = p.find("article", {"class" : "thread"})['id'].__str__()
-        
+
+        try:
+            uniq = p.find("article", {"class" : "thread"})['id'].__str__()
+        except:
+            uniq = utils.sanitize_filename(a)
+
         for post in posts:
-            
+
             if post.has_attr('title'):
                 filename = post['title']
             else:
                 filename = post.contents[0]
-            
+
             post_link[0].append(str(post['href']))
             post_link[1].append(filename)
-            
+
         say_redirect = False
-        
+
         for x, url in enumerate(post_link[0]):
             if ('/redirect/') in url:
                 if say_redirect is False:
                     report('info', 'Collecting redirection data ..'); say_redirect = True
+
                 p = self.establish(url, site, bs=False, rb=False, v=False)
                 rm = re.search('content="[0-9]{1,}; url=(.*)">', p)
+
                 if rm:
                     queue.file(site, uniq, rm.group(1), post_link[1][x], download.download_type['cloudflare'])
             else:
                 queue.file(site, uniq, url, post_link[1][x], download.download_type['cloudflare'])
-                
+
         return self.box
-        
+
     @classmethod
     def warosu_org(self, a, site="warosu.org", uniq=None):
-        
+
         '''warosu.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         regex = ('File: [0-9]{1,3} [A-Za-z]{1,3}, [0-9]{1,5}x[0-9]{1,5}, (.*..*)')
         op_post = p.find("div", {"class" : "content"}).find("div")
         uniq = str(op_post['id'])
         url = 'https:' + str(op_post.find("img", {"class" : "thumb"}).parent['href'])
         fn_search = re.search(regex, str(op_post.find("span").contents[0]))
-        
-        if fn_search: filename = fn_search.group(1)
-        else: filename = utils.get_filename_from_url(url)
-        
+
+        if fn_search:
+            filename = fn_search.group(1)
+        else:
+            filename = utils.get_filename_from_url(url)
+
         queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
-        
+
         replies = p.findAll("td", {"class" : "reply"})
-        
+
         for reply in replies:
             try:
                 url = 'https:' + str(reply.find("img", {"class" : "thumb"}).parent['href'])
                 x = reply.findAll("span")
-                
+
                 for i in x:
                     if ('File: ') in i.contents[0]:
                         fn_search = re.search(regex, i.contents[0])
-                        if fn_search: filename = fn_search.group(1)
-                        else: filename = utils.get_filename_from_url(url)
-                        
+
+                        if fn_search:
+                            filename = fn_search.group(1)
+                        else:
+                            filename = utils.get_filename_from_url(url)
+
                 queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
-                
+
             except:
                 pass
-            
+
         return self.box
-        
-    @classmethod
-    def wizchan_org(self, a, site="wizchan.org", uniq=None):
-        
-        '''wizchan.org Downloader'''
-        
-        rm = re.search(variables.sites_regex_table['wizchan.org'], a)
-        
-        if rm:
-            url = '{}wizchan.org/{}/res/{}.json'.format(rm.group(1), rm.group(2), rm.group(3))
-            uniq = rm.group(3)
-            p = self.establish(url, site, bs=False)
-            thread_data = utils.get_json(p)
-            
-            for post in thread_data['posts']:
-                
-                if post.get('filename'):
-                    filename = post['filename'] + post['ext']
-                    url = '{}wizchan.org/{}/src/{}{}'.format(rm.group(1), rm.group(2), post['tim'], post['ext'])
-                    
-                    queue.file(site, uniq, url, filename, download.download_type['generic'])
-                    
-        return self.box
-        
+
     @classmethod
     def imgurxalbum(self, a ,site="imgur:album", uniq=None):
-    
+
         '''imgur.com Downloader'''
-        
+
         p = self.establish(a, site, bs=False)
-        
+
         album_json = utils.get_json(utils.re_find('image[ ]{2,}: ({.*})', p, 1))
         uniq = album_json['hash']
-        
+
         if album_json['is_album'] == True:
-            
+
             report('info', 'album \'{}\' has {} image(s) ..'.format(album_json['title'], album_json['num_images']))
-        
+
             p = self.establish('http://imgur.com/ajaxalbums/getimages/{}/hit.json'.format(uniq), site, bs=False, v=False)
             album_json = utils.get_json(p)
-        
+
             for image in album_json['data']['images']:
                 extension = ''.join([i for i in image['ext'] if not i.isdigit()])
                 filename = '{}{}'.format(image['hash'], extension)
                 url = 'https://i.imgur.com/{}'.format(filename)
-            
+
                 queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
-            
+
         else:
-            report('info', 'This is not a album.')
-            
+            report('info', 'This is not an album.')
+
         return self.box
-        
+
     @classmethod
     def krautchan(self, a ,site="krautchan", uniq=None):
-    
+
         '''krautchan.net Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         uniq = str(str(p.find("input", {"name" : "board"})['value'] + p.find("input", {"name" : "parent"})['value']))
-        
+
         posts = p.findAll("div", {"class" : "file_reply"})
-        
+
         op_header = p.find("div", {"class" : "file_thread"})
         op_url = 'http://krautchan.net' + op_header.findAll("a")[0]['href']
         op_post = p.find("span", {"class" : "filename"}).find("a")['href']
-        
+
         queue.file(site, uniq, op_url, utils.get_filename_from_url(op_url), download.download_type['cloudflare'])
-        
+
         for post in posts:
-            
+
             filename = post.findAll("span")[0].text
-            
+
             url = 'http://krautchan.net' + post.find("span", {"class" : "filename"}).find("a")['href']
-            
+
             queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
 
         return self.box
-        
+
     @classmethod
     def sevenchan_org(self, a ,site="7chan.org", uniq=None):
-        
+
         '''7chan.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         rgx = '(\(([0-9]{1,}.[0-9]{1,}[A-Z]{1,2}), ?([0-9]{1,}x[0-9]{1,}), ?(.{1,}.[a-zA-Z]{1,4})\))'
         images = p.findAll("p", {"class" : "file_size"})
         uniq = p.find("input", {"name" : "replythread"})['value'].__str__()
         multi_images = p.findAll("img", {"class" : ["multithumb", "multithumbfirst"]})
-        
+
         for image in images:
             url = image.find("a")['href']
             filename = None
@@ -584,42 +641,42 @@ class scrapers(object):
             else: filename = image.find("a").contents[0].__str__().replace('\n', '')
 
             queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
+
         for m_image in multi_images:
             url = m_image['src'].replace('thumb', 'src').replace('s.', '.')
             filename = None
             rm = re.search(rgx, m_image['title'])
-            
+
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
-            
+
             queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
+
         return self.box
 
     @classmethod
     def arhivach(self, a, site="arhivach", uniq=None):
-        
+
         '''arhivach.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         images = p.findAll("a", {"class" : ["img_filename"]})
-        
+
         if uniq is None:
             rm = re.search(variables.sites_regex_table['arhivach'], a)
-            
+
             if rm:
                 uniq = rm.group(3)
             else:
                 uniq = ''.join(c for c in a if c.isdigit())
-                
+
         for img in images:
             url = filename = None
-            
+
             if img['href'][0] == ('#'):
                 match = re.search("'(http(s)?:\/\/(.*).(.{2,5})\/(.*).(.{3,4}))'", img['onclick'].__str__())
-                
+
                 if match:
                     url = match.group(1)
                     filename = utils.get_filename_from_url(url)
@@ -627,191 +684,197 @@ class scrapers(object):
                 if img['href'].startswith('/a_cimg/'):
                     url = 'https://arhivach.org/' + img['href'].__str__()
                     filename = img.contents[0].__str__()
-                    
+
                 if img['href'].startswith('https://') or img['href'].startswith('http://'):
                     url = img['href'].__str__()
                     filename = img.contents[0].__str__()
-                    
+
             if url is not None:
-                
+
                 queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
-                
-        return self.box
-        
-    @classmethod
-    def brchan(self, a, site="brchan", uniq=None):
-        
-        '''brchan.org Downloader'''
-        
-        rm = re.search(variables.sites_regex_table['brchan'], a)
-        uniq = rm.group(3) + rm.group(5)
-        
-        json_url = ('{}brchan.org/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
-        
-        p = self.establish(json_url, site, bs=False)
-        
-        json_data = utils.get_json(p)
-        
-        for post in json_data['posts']:
-            if 'md5' in post:
-                
-                u_url = post['tim'] + post['ext']
-                
-                if post['filename'].isspace() is True or len(post['filename']) == 0:
-                    filename = u_url
-                else:
-                    filename = post['filename'] + post['ext']
-                
-                url = '{}brchan.org/{}/src/{}'.format(rm.group(2), rm.group(3), u_url)
-                
-                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
-                
+
         return self.box
 
     @classmethod
     def twoch_hk(self, a, site="2ch.hk", uniq=None):
-        
+
         '''2ch.(hk, pm, re, tf, wf, yt, so) Downloader'''
-        
+
         rm = re.search(variables.sites_regex_table['2ch.hk'], a)
         uniq = rm.group(3) + rm.group(5)
-        
+
         json_url = ('{}2ch.hk/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
 
         p = self.establish(json_url, site, bs=False)
-        
+
         json_data = utils.get_json(p)
-        
+
         for post in json_data['threads'][0]['posts']:
             for file in post['files']:
                 try:
                     filename = file['fullname']
-                except KeyError:
+                except:
                     filename = file['path'].split('/')[int(file['path'].count('/'))]
-                    
+
                 url = ('{}2ch.hk{}'.format(rm.group(2), file['path']))
                 queue.file(site, uniq, url, filename, download.download_type['generic'])
-                
+
         return self.box
-    
+
     @classmethod
     def fourarchive(self, a, site="4archive", uniq=None):
-        
+
         '''4archive.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
         uniq = p.find("div", {"class" : "thread"})['id'].__str__()
-        
+
         for post in posts:
-            
+
             file_info = post.findAll("div", {"class" : ["fileText"]})
-            
+
             for fi in file_info:
                 file_a = fi.find("a")
                 filename = file_a.contents[0].__str__()
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
-                url = utils.fix_url(fi.find("a")['href'])
-                
+                url = utils.clean_url(fi.find("a")['href'])
+
                 if url.startswith('/data/'):
                     url = (utils.re_find(variables.sites_regex_table['4archive'], a, 1) + url)
-                
+
                 queue.file(site, uniq, url, filename, download.download_type['generic'])
-                
+
         return self.box
-    
+
     @classmethod
     def fourchan(self, a, site="4chan", uniq=None):
-        
+
         '''4chan.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
         uniq = p.find("div", {"class" : "thread"})['id'].__str__()
-        
+
         for post in posts:
-            
+
             file_info = post.findAll("div", {"class" : ["fileText"]})
-            
+
             for fi in file_info:
                 file_a = fi.find("a")
                 filename = file_a.contents[0].__str__()
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
-                url = utils.fix_url(fi.find("a")['href'])
-                
+                url = utils.clean_url(fi.find("a")['href'])
+
                 queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
-                
+
         return self.box
-    
+
     @classmethod
     def eightchan(self, a, site="8chan", uniq=None):
-        
-        '''8ch.net (Infinitychan) Downloader'''
-        
+
+        '''8chan (Infinitychan) Downloader'''
+
         p = self.establish(a, site)
-        
+
         fi = p.findAll("p", {"class" : "fileinfo"})
         uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id']
-        
+
         for f in fi:
             filename = f.find("span", {"class" : "unimportant"}).find("span",
                 {"class" : "postfilename"}).contents[0].__str__()
             url = f.find("a")['href'].__str__()
-            
+
+            if url.startswith('/'):
+                url = utils.get_base_url(a) + url
+
             queue.file(site, uniq, url, filename, download.download_type['generic'])
-            
+
         return self.box
 
     @classmethod
     def fourplebs(self, a, site="4plebs", uniq=None):
-        
+
         '''4plebs.org Downloader'''
-        
+
         p = self.establish(a, site)
-        
+
         image_links = p.findAll("a", {"class" : "thread_image_link"})
         uniq = p.find("article")['data-thread-num']
-        
+
         for link in image_links:
             url = link['href'].__str__()
             queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
-            
+
         return self.box
-    
+
     @classmethod
-    def sli_mgxalbum(self, a, site="sli.mg", uniq=None):
-        
-        '''sli.mg Downloader'''
-        
-        p = self.establish(a, site)
-        
-        image_links = p.findAll("div", {"class" : "egrpimg"})
-        uniq = utils.re_find(variables.sites_regex_table['sli.mg:album'], a, 1)
-        
-        for link in image_links:
-            url = link.find("a")['href'].__str__()
-            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
-            
+    def vichan(self, a, site="vichan", uniq=None):
+
+        '''vichan Downloader'''
+
+        p = self.establish(a, site, ra=True)
+
+        base_url = utils.get_base_url(a)
+        simple_name = utils.get_simplename_from_url(a)
+
+        if len(simple_name) > 1:
+            site = simple_name
+
+        thread_id = p[0].find("input", {"name" : "thread", "type" : "hidden"})
+
+        if thread_id:
+            uniq = thread_id['value']
+        if uniq is None:
+            uniq = utils.get_unique_number_from_url(a)
+
+        replies = p[0].findAll("div", {"class" : ["file", "is-pic"]})
+
+        for reply in replies:
+            found = False
+            files = reply.find("p", {"class" : "fileinfo"})
+            if files:
+                image_url = files.find("a")
+                if image_url.has_attr('href'):
+                    if utils.validate_image_url(image_url['href']):
+                        url = utils.patch_url(image_url['href'], base_url)
+                        try:
+                            filename = files.find("span", {"class" : "postfilename"}).contents[0]
+                        except:
+                            filename = utils.get_filename_from_url(url)
+                        queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                        found = True
+
+            if found == False:
+                img_files = reply.findAll("img", {"class" : "post-image"})
+                for img_file in img_files:
+                    if img_file.parent.has_attr('href'):
+                        url = utils.patch_url(img_file.parent['href'], base_url)
+                        queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
+                        found = True
+
         return self.box
 
 class ibdl(object):
 
     imageboard_name = destination = None
 
-    def __init__(self, site, dest, dirn):
-        
+    def __init__(self, site, dest, dirn, sepdir):
+
         self.current_url = site
-        
+
         if dest is not None:
             variables.save_directory = dest
-        
+
+        variables.use_sep_dir = sepdir
+
         self.detect_site()
-        
-        self.download_images(self.check_list(getattr(scrapers, 
-            self.get_function(self.imageboard_name))(a=site), cdir=dirn))  
-    
+
+        self.download_images(self.check_list(getattr(scrapers,
+            self.get_function(self.imageboard_name))(a=site), cdir=dirn))
+
     def create_destination(self, a):
         if not os.path.exists(a):
             try:
@@ -820,9 +883,9 @@ class ibdl(object):
                 raise ErrorCreatingDirectory
             except:
                 pass
-        
+
     def download(self, site, uniq, url, name=None, dtype=download.download_type['generic']):
-        
+
         '''This will assign a download function to the current item and download it'''
 
         # If the item doesn't have a name we strip the filename from the URL and use that
@@ -830,56 +893,86 @@ class ibdl(object):
             name = (url.split('/')[len(url.split('/'))-1])
         else:
             name = (utils.sanitize_filename(name))
-                
-        # Where we are going to save the item 
-        destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
-        
+
+        # Where we are going to save the item
+        if variables.use_sep_dir == True:
+            destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
+        else:
+            destination = ('{}/{}'.format(variables.save_directory, name)).replace('//', '/')
+
         if not os.path.exists(destination):
             # Create base directory if it doesn't exist
             self.create_destination(os.path.dirname(destination))
-            
+
             # Assign a download function and download the item
-            if dtype == download.download_type['cloudflare']: return download.cloudflare(site, url, destination, name)
-            elif dtype == download.download_type['generic']: return download.generic(site, url, destination, name)
-            elif dtype == download.download_type['content-disposition']: return download.contentdisposition(site, url, destination, name)
-            else: return download.generic(site, url, destination, name)
-            
+            if dtype == download.download_type['cloudflare']:
+                return download.cloudflare(site, url, destination, name)
+            elif dtype == download.download_type['generic']:
+                return download.generic(site, url, destination, name)
+            elif dtype == download.download_type['content-disposition']:
+                return download.contentdisposition(site, url, destination, name)
+            else:
+                return download.generic(site, url, destination, name)
+
         else:
-            # If the item (destionation) already exists we skip it
+            # If the item (destination) already exists we skip it
             return [variables.dict_return_codes['skip'], 'Skipped {}'.format(destination)]
-        
+
     def detect_site(self):
-        
+
         '''Match the passed URL against the regex table to find what site we are dealing with'''
-        
+
+        # Search through a list of known sites
         for s, r in variables.sites_regex_table.items():
             match = re.search(r, self.current_url)
-            
-            if match: 
+
+            if match:
                 self.imageboard_name = variables.imageboard_name = s
                 report(s, self.current_url)
-                
+
+        # If no known site is found try to search the site source for a matching imageboard
+        if self.imageboard_name is None:
+            unknown_site = scrapers.request(self.current_url)
+
+            for s, r in variables.adaptive_regex_table.items():
+
+                if isinstance(r, list):
+                    for x in r:
+                        match = re.search(x, unknown_site[0])
+                        if match:
+                            self.imageboard_name = variables.imageboard_name = s
+                            report(s, self.current_url)
+
+                else:
+
+                    match = re.search(r, unknown_site[0])
+
+                    if match:
+                        self.imageboard_name = variables.imageboard_name = s
+                        report(s, self.current_url)
+
+        # If both searches are unsuccessful raise not supported error
         if self.imageboard_name is None:
             raise ErrorNotSupported
-        
+
     def get_function(self, site):
-        
+
         '''Returns the scraper function we are going to use'''
-        
+
         for s, r in variables.dict_number_converter.items():
             site = str.replace(site, s, r)
-            
+
         return site
-    
+
     def check_list(self, lst, cdir=None):
-        
+
         temp = []
         count = 2
-        
+
         if cdir is not None:
             for c, q in enumerate(lst[1]):
                 lst[1][c] = cdir
-            
+
         for i, x in enumerate(lst[3]):
             # Check if a item (file) has a duplicate - if so rename it
             if lst[3][i] not in temp:
@@ -889,93 +982,95 @@ class ibdl(object):
                 file = os.path.splitext(lst[3][i])
                 temp.append('{}({}){}'.format(file[0], str(count), file[1]))
                 count += 1
-                
+
         lst[3] = temp
-        
+
         return lst
-    
+
     def download_images(self, items, current_item = 0):
-        
+
         '''Download the items returned from the scraper'''
-                  
-        # Start a new pool  
+
+        # Create a new pool
         pool = mp.Pool()
         results = []
-        
+
         if len(items[0]) > 0:
             if items[1][1:] == items[1][:-1]:
                 report('info', os.path.normpath('Downloading to: {}/{}'.format(variables.save_directory, items[1][0])))
             else:
                 report('info', 'Downloading to: ' + variables.save_directory)
-        
+
         # Start download processes
         r = [pool.apply_async(self.download, (main_item,
                                               items[1][x],
                                               items[2][x],
                                               items[3][x],
                                               items[4][x]
-                                              ), 
+                                              ),
                               callback = results.append) for x, main_item in enumerate(items[0])]
-        
+
         # While it's downloading we display the progress
         while len(results) < len(items[0]):
-            
+
             if len(results) > current_item:
                 current_item = len(results)
                 code = results[len(results) - 1][0]
-                
+
                 if code is not 1 and code is not 2:
                     string_code = utils.return_code_to_string(code)
                     work_report = results[len(results) - 1][1]
-                    
+
                     # Print the current item and total progress
                     if work_report is not False:
                         count = utils.format_count(len(items[0]), current_item)
                         report(string_code, '{} - {}'.format(count, work_report))
-                    
+
         return_codes = []
-        
+
         # Print the final results
         for i in range(0, len(results)):
             return_codes.append(results[i][0])
-        
+
         report('info', utils.result_to_string(return_codes))
 
 class ErrorRequest(Exception):
     '''Raised if the page returns a bad status code'''
-    
+
 class ErrorNotSupported(Exception):
     '''Raised if the url can't be parsed and or identified'''
-    
+
 class ErrorCreatingDirectory(Exception):
     '''Raised if directory could not be created'''
-    
+
 class ErrorParsingJson(Exception):
     '''Raised if encountering an error when extracting and or parsing a json object'''
 
 def main():
     if not (sys.version_info > (3, 0)):
         report('info', 'This script requires Python 3+'); sys.exit(0)
-          
+
     parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
-    parser.add_argument('urls', default = [], nargs = '*', help = 'one or more URLs to scrape') 
-    parser.add_argument('-d', dest = 'destination', default = None, help = 'where to save images (path)', required = False)
-    parser.add_argument('-dd', dest = 'directory_name',default = None, help = 'where to save images (directory name)', required = False)
-    parser.add_argument('-s', dest='s', action='store_true', help='display the available scrapers (supported sites)', required = False)
+    parser.add_argument('urls', default = [], nargs = '*', help = 'one or more URLs to scrape')
+    parser.add_argument('-p', dest = 'path', default = None, help = 'where to save files (default is working directory)', required = False)
+    parser.add_argument('-x', dest='x', action='store_true', help = 'disables saving files into separate folders (see -d)', required = False)
+    parser.add_argument('-d', dest = 'directory_name',default = None, help = 'name of a separate folder to save files into \
+    (this folder will be created inside the path, default is a unique name fetched from the URL)', required = False)
+    parser.add_argument('-s', dest='s', action='store_true', help='display the available scrapers', required = False)
     parser.add_argument('-v', dest='v', action='store_true', help='show current version', required = False)
 
     # Retrieve arguments
-    args = parser.parse_args() 
+    args = parser.parse_args()
 
-    try: 
+    try:
         # Print current version
         if args.v:
             report('version', variables.version); sys.exit(0)
-        
+
         # Print supported sites
         if args.s:
             utils.get_supported_sites(); sys.exit(0)
-            
+
         # Check if URL(s) were passed, if so go through them and if not exit
         if len(args.urls) == 0:
             # Exit
@@ -983,27 +1078,27 @@ def main():
         else:
             # Go through URL(s)
             for url in args.urls:
-                scraper = ibdl(url, args.destination, args.directory_name)
-       
+                scraper = ibdl(url, args.path, args.directory_name, not args.x)
+
     # Exceptions
     except ErrorRequest as exception:
         error_code = int(str(exception))
         status_code = utils.request_code_to_string(error_code)
-        
+
         if status_code is not False:
             report('error', 'Error requesting page (code: {} - {})'.format(error_code, status_code))
         else:
             report('error', 'Error requesting page (code: {})'.format(error_code))
-            
+
         if error_code in variables.possible_reasons:
             report('info', 'Possible reasons: ' + variables.possible_reasons[error_code][0])
 
     except ErrorNotSupported:
         report('error', 'Unsupported URL')
-        
+
     except ErrorCreatingDirectory:
         report('error', 'Error creating directory, make sure you have the required permissions')
-        
+
     except ErrorParsingJson:
         report('error', 'Error parsing JSON')
 
