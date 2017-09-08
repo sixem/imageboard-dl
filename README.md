@@ -1,5 +1,5 @@
 # Imageboard-DL
-**Image downloader script for various imageboards and image albums written in Python.**
+**Image downloader / scraper script for various imageboards and image albums written in Python.**
 
 ### Requirements
 + Python 3+
