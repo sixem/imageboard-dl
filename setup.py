@@ -1,11 +1,11 @@
 from setuptools import setup
 
 setup(name="imageboard-dl",
-	version="1.0.58",
-	description="Python based image downloader for various imageboards and online image albums.",
+	version="1.0.59",
+	description="Image downloader/scraper for various imageboards and image albums written in Python.",
 	url="https://github.com/sixem/imageboard-dl",
 	author="bentkrisell",
-	author_email="sixem.mb99@gmail.com",
+	author_email="admin@eyy.co",
 	license='MIT',
 	packages=["imageboard-dl"],
 	install_requires=['cfscrape','beautifulsoup4',],
