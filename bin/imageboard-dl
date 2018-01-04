@@ -4,7 +4,7 @@
 '''
 imageboard-dl
 
-usage imageboard-dl [-h] [-v] [-s] [-d PATH] [-dd DIRECTORY] URL(s)
+usage: imageboard-dl [-h] [-v] [-s] [-x] [-p PATH] [-d DIRECTORY] URL(s)
 
 @sixem
 '''
@@ -30,101 +30,98 @@ import sys
 import mimetypes
 import hashlib
 
+imageboard_name = None
+
+# Current Version - D/M/Y
+version = "1.0.59 - 2018-01-04"
+
+# General values
+general_vars = {
+    'cfs_timeout': 30,
+    'dir_frmt': '{}-{}',
+    'connest_frmt': 'Connection established ..',
+    'connest_frmt_ip': 'Connection established ({}:{}) ..'
+    }
+
+# Request headers
+req_headers = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:57.0) Gecko/20100101 Firefox/57.0',
+    'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-us,en;q=0.5',
+    }
+
+# Regex table used to identify known URLs being passed
+sites_regex_table = {
+    '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
+    '4chan': '((https?:\/\/)(?:www.)?boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+    '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+    '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
+    'vichan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
+    'krautchan': '(https?:\/\/krautchan\.net\/([A-Za-z]{1,5})\/thread-([0-9]{1,})\.html)',
+    'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
+    'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})'
+    }
+
+adaptive_regex_table = {
+    'foolfuuka': [
+    '<link rel=[\'"]stylesheet[\'"] type=[\'"]text\/css[\'"] href=[\'"](?:.*)\/foolfuuka\/foolz\/(?:.*)\.css[\'"]>',
+    '<script src=[\'"](?:.*)\/foolfuuka\/foolz\/foolfuuka-(?:.*)\.js[\'"]><\/script>'
+    ],
+
+    'vichan': [
+    '<body class=[\'"][A-Za-z0-9]{1,}? vichan [A-Za-z0-9-]{1,}? [A-Za-z0-9-]{1,}?[\'"] data-stylesheet=[\'"]default[\'"]>',
+    '<a href=[\'"]https?:\/\/([A-Za-z/.]{1,})?vichan\.net([A-Za-z/.]{1,})?[\'"]>vichan<\/a>',
+    '<br>vichan Copyright .{1,10} 20[0-9]{2}-20[0-9]{2} vichan-devel<\/p>'
+    ],
+}
+
+# Possible reasons for a error code (requests)
+possible_reasons = {
+    403: ['Are you using a VPN / Proxy?']
+    }
+
+# Used for site to function convertion
+dict_number_converter = {
+    '1': 'one',
+    '2': 'two',
+    '3': 'three',
+    '4': 'four',
+    '5': 'five',
+    '6': 'six',
+    '7': 'seven',
+    '8': 'eight',
+    '9': 'nine',
+    '10': 'ten',
+    ':': 'x',
+    '.': '_'
+    }
+
+# Used for returning results
+dict_return_codes = {
+    'attempt': 1,
+    'skip': 2,
+    'download': 3,
+    'error': 4
+    }
+
+valid_filenames = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm', 'mp3']
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
 
-class variables():
-    imageboard_name = None
+class download():
 
     # Default save directory (current working directory)
     save_directory = os.getcwd()
 
     # Use separate save directory or not
     use_sep_dir = False
-
-    # Current Version - D/M/Y
-    version = "1.0.58 - 31.07.2017"
-
-    # General values
-    general_vars = {
-        'cfs_timeout': 120,
-        'dir_frmt': '{}-{}',
-        'connest_frmt': 'Connection established ..',
-        'connest_frmt_ip': 'Connection established ({}:{}) ..'
-        }
-
-    # Request headers
-    req_headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/50.0 (Chrome)',
-        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept-Language': 'en-us,en;q=0.5',
-        }
-
-    # Regex table used to identify known URLs being passed
-    sites_regex_table = {
-        '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
-        '4chan': '((https?:\/\/)(?:www.)?boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
-        '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-        'vichan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-        'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
-        'krautchan': '(https?:\/\/krautchan\.net\/([A-Za-z]{1,5})\/thread-([0-9]{1,})\.html)',
-        'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
-        'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
-        'vsco.co:user': 'https?://(?:www.)?vsco.co/.*'
-        }
-
-    adaptive_regex_table = {
-        'foolfuuka': [
-        '<link rel=[\'"]stylesheet[\'"] type=[\'"]text\/css[\'"] href=[\'"](?:.*)\/foolfuuka\/foolz\/(?:.*)\.css[\'"]>',
-        '<script src=[\'"](?:.*)\/foolfuuka\/foolz\/foolfuuka-(?:.*)\.js[\'"]><\/script>'
-        ],
-
-        'vichan': [
-        '<body class=[\'"][A-Za-z0-9]{1,}? vichan [A-Za-z0-9-]{1,}? [A-Za-z0-9-]{1,}?[\'"] data-stylesheet=[\'"]default[\'"]>',
-        '<a href=[\'"]https?:\/\/([A-Za-z/.]{1,})?vichan\.net([A-Za-z/.]{1,})?[\'"]>vichan<\/a>',
-        '<br>vichan Copyright .{1,10} 20[0-9]{2}-20[0-9]{2} vichan-devel<\/p>'
-        ],
-    }
-
-    # Possible reasons for a error code (requests)
-    possible_reasons = {
-        403: ['Are you using a VPN / Proxy?']
-        }
-
-    # Used for site to function convertion
-    dict_number_converter = {
-        '1': 'one',
-        '2': 'two',
-        '3': 'three',
-        '4': 'four',
-        '5': 'five',
-        '6': 'six',
-        '7': 'seven',
-        '8': 'eight',
-        '9': 'nine',
-        '10': 'ten',
-        ':': 'x',
-        '.': '_'
-        }
-
-    # Used for returning results
-    dict_return_codes = {
-        'attempt': 1,
-        'skip': 2,
-        'download': 3,
-        'error': 4
-        }
-
-    valid_filenames = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm']
-
-class download():
 
     # Available downloaders
     download_type = {
@@ -138,8 +135,8 @@ class download():
         '''Generic Downloader'''
 
         try:
-            req = requests.get(url, headers=variables.req_headers,
-                               timeout=variables.general_vars['cfs_timeout'])
+            req = requests.get(url, headers=req_headers,
+                               timeout=general_vars['cfs_timeout'])
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
             except:
@@ -151,16 +148,16 @@ class download():
 
                 if os.path.exists(destination):
                     if size == False:
-                        return [variables.dict_return_codes['download'], name]
+                        return (dict_return_codes['download'], name)
                     else:
-                        return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+                        return (dict_return_codes['download'], '{} ({})'.format(name, size))
 
-                else: return [variables.dict_return_codes['error'], False]
+                else: return (dict_return_codes['error'], False)
             else:
-                return [variables.dict_return_codes['error'], '{}: {}'.format(req.status_code, name)]
+                return (dict_return_codes['error'], '{}: {}'.format(req.status_code, name))
 
         except Exception as e:
-            return [variables.dict_return_codes['error'], False]
+            return (dict_return_codes['error'], False)
 
     def cloudflare(site, url, destination, name, x='cloudflare'):
 
@@ -169,8 +166,8 @@ class download():
         try:
 
             cfs = cfscrape.create_scraper()
-            req = cfs.get(url, headers=variables.req_headers,
-                         timeout=variables.general_vars['cfs_timeout'], stream=True)
+            req = cfs.get(url, headers=req_headers,
+                         timeout=general_vars['cfs_timeout'], stream=True)
 
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
@@ -185,24 +182,24 @@ class download():
 
                     if os.path.exists(destination):
                         if size == False:
-                            return [variables.dict_return_codes['download'], name]
+                            return (dict_return_codes['download'], name)
                         else:
-                            return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+                            return (dict_return_codes['download'], '{} ({})'.format(name, size))
 
-                    else: return [variables.dict_return_codes['error'], False]
+                    else: return (dict_return_codes['error'], False)
             else:
-                return [variables.dict_return_codes['error'], '{}: {}'.format(req.status_code, name)]
+                return (dict_return_codes['error'], '{}: {}'.format(req.status_code, name))
 
         except:
-            return [variables.dict_return_codes['error'], False]
+            return (dict_return_codes['error'], False)
 
     def contentdisposition(site, url, destination, name, x='content-disposition'):
 
         '''Content-Disposition (Attachment) Downloader'''
 
         try:
-            req = requests.get(url, headers=variables.req_headers,
-                               timeout=variables.general_vars['cfs_timeout'])
+            req = requests.get(url, headers=req_headers,
+                               timeout=general_vars['cfs_timeout'])
 
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
@@ -217,17 +214,17 @@ class download():
                     open(destination, 'wb').write(req.content)
                     if os.path.exists(destination):
                         if size == False:
-                            return [variables.dict_return_codes['download'], name]
+                            return (dict_return_codes['download'], name)
                         else:
-                            return [variables.dict_return_codes['download'], '{} ({})'.format(name, size)]
+                            return (dict_return_codes['download'], '{} ({})'.format(name, size))
 
-                else: return [variables.dict_return_codes['error'], False]
+                else: return (dict_return_codes['error'], False)
 
             else:
-                return [variables.dict_return_codes['error'],'{}: {}'.format(req.status_code, name)]
+                return (dict_return_codes['error'],'{}: {}'.format(req.status_code, name))
 
         except:
-            return [variables.dict_return_codes['error'], False]
+            return (dict_return_codes['error'], False)
 
 class queue():
     @staticmethod
@@ -279,8 +276,8 @@ class utils():
         return x
 
     def validate_image_url(url):
-        for x in variables.valid_filenames:
-            if url.endswith(x):
+        for x in valid_filenames:
+            if url.lower().endswith(x):
                 return True
         return False
 
@@ -294,14 +291,6 @@ class utils():
 
     def simplifiy_string(str):
         return str.lower().replace(' ', '_')
-
-    def get_supported_sites(sites = []):
-
-        for i in variables.sites_regex_table: sites.append(i)
-
-        sites.sort()
-
-        for i in sites: print(i)
 
     def url_to_digits(str, cutoff=0):
 
@@ -337,7 +326,7 @@ class utils():
 
     def const_df(a, b):
 
-        return variables.general_vars['dir_frmt'].format(a, b)
+        return general_vars['dir_frmt'].format(a, b)
 
     def sanitize_filename(fn):
 
@@ -345,7 +334,7 @@ class utils():
 
     def return_code_to_string(ncode):
 
-        mdict = variables.dict_return_codes
+        mdict = dict_return_codes
         try:
             return mdict.keys()[mdict.values().index(ncode)]
         except:
@@ -364,17 +353,17 @@ class utils():
 
         if len(results) > 0:
 
-            if results.count(variables.dict_return_codes['skip']) > 0:
+            if results.count(dict_return_codes['skip']) > 0:
                 out += ('Downloaded {} file(s), {} file(s) already exists'.format(
-                    results.count(variables.dict_return_codes['download']),
-                    results.count(variables.dict_return_codes['skip'])))
+                    results.count(dict_return_codes['download']),
+                    results.count(dict_return_codes['skip'])))
 
             else: out += ('Downloaded {} file(s)'.format(results.count
-                    (variables.dict_return_codes['download'])))
+                    (dict_return_codes['download'])))
 
-            if results.count(variables.dict_return_codes['error']) > 0:
+            if results.count(dict_return_codes['error']) > 0:
                 out += (' and encountered {} error(s) when downloading'.format(
-                    results.count(variables.dict_return_codes['error'])))
+                    results.count(dict_return_codes['error'])))
 
             return out
         else:
@@ -389,7 +378,7 @@ class utils():
         else:
             return False
 
-class scrapers(object):
+class scrapers():
 
     box = [[], [], [], [], []]
 
@@ -398,8 +387,8 @@ class scrapers(object):
 
         cfs = cfscrape.create_scraper()
 
-        request = cfs.get(url, headers = variables.req_headers,
-            timeout = variables.general_vars['cfs_timeout'], cookies = use_cookies, stream=True)
+        request = cfs.get(url, headers = req_headers,
+            timeout = general_vars['cfs_timeout'], cookies = use_cookies, stream=True)
 
         try:
             # Gets the IP of the request
@@ -409,7 +398,7 @@ class scrapers(object):
 
         # See if request is good if not raise an error
         if request.status_code is 200:
-            return [request.text, request.cookies, response_ip, request]
+            return (request.text, request.cookies, response_ip, request)
         else:
             raise ErrorRequest(request.status_code)
 
@@ -424,13 +413,13 @@ class scrapers(object):
 
             if v is True:
                 if request[2] is not None:
-                    report(site, variables.general_vars['connest_frmt_ip'].format(request[2][0], request[2][1]))
+                    report(site, general_vars['connest_frmt_ip'].format(request[2][0], request[2][1]))
                 else:
-                    report(site, variables.general_vars['connest_frmt'])
+                    report(site, general_vars['connest_frmt'])
 
             if bs is True:
                 if ra is True:
-                    return [BeautifulSoup(request[0], "html.parser"), request]
+                    return (BeautifulSoup(request[0], "html.parser"), request)
                 else:
                     return BeautifulSoup(request[0], "html.parser")
 
@@ -441,43 +430,6 @@ class scrapers(object):
                     return request[0]
         except:
             raise ErrorRequest(request[3].status_code)
-
-    @classmethod
-    def vsco_coxuser(self, a, site="vsco.co:user", uniq=None):
-
-        '''vsco.co (user pictures) Downloader'''
-
-        is_media_link = utils.re_find('https?:\/\/vsco.co\/(.*)\/media\/[A-Za-z0-9]{1,}', a, 1)
-
-        if is_media_link is not False:
-            a = 'https://vsco.co/{}/'.format(is_media_link)
-
-        p = self.establish(a, site, ra=True)
-
-        user = p[0].find("meta", {"property" : "og:site_name"})['content']
-        user = utils.re_find('[a-z]{1,}\.[a-z]{1,}/(.*) \| [A-Z]{1,}', str(user), 1)
-
-        id = p[0].find("meta", {"property" : "al:ios:url"})['content']
-        id = utils.re_find('\/([0-9]{1,})\/', str(id), 1)
-
-        try:
-            ajax = 'https://vsco.co/ajxp/{}/2.0/medias?site_id={}&page=1&size=99999'.format(p[1][1]['vs'], id)
-            request = self.request(ajax, use_cookies = p[1][1])
-            ajax_json = utils.get_json(request[0])
-            report('info', 'user \'{}\' has {} post(s)'.format(user, ajax_json['total']))
-
-            for post in ajax_json['media']:
-                if 'video_url' in post:
-                    url = 'https://' + post['video_url']
-                else:
-                    url = 'https://' + post['responsive_url']
-
-                queue.file(site, user, url, utils.get_filename_from_url(url), download.download_type['generic'])
-
-        except KeyError:
-            report('error', 'Could not retrieve JSON data')
-
-        return self.box
 
     @classmethod
     def foolfuuka(self, a, site="foolfuuka", uniq=None):
@@ -664,7 +616,7 @@ class scrapers(object):
         images = p.findAll("a", {"class" : ["img_filename"]})
 
         if uniq is None:
-            rm = re.search(variables.sites_regex_table['arhivach'], a)
+            rm = re.search(sites_regex_table['arhivach'], a)
 
             if rm:
                 uniq = rm.group(3)
@@ -700,7 +652,7 @@ class scrapers(object):
 
         '''2ch.(hk, pm, re, tf, wf, yt, so) Downloader'''
 
-        rm = re.search(variables.sites_regex_table['2ch.hk'], a)
+        rm = re.search(sites_regex_table['2ch.hk'], a)
         uniq = rm.group(3) + rm.group(5)
 
         json_url = ('{}2ch.hk/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
@@ -742,7 +694,7 @@ class scrapers(object):
                 url = utils.clean_url(fi.find("a")['href'])
 
                 if url.startswith('/data/'):
-                    url = (utils.re_find(variables.sites_regex_table['4archive'], a, 1) + url)
+                    url = (utils.re_find(sites_regex_table['4archive'], a, 1) + url)
 
                 queue.file(site, uniq, url, filename, download.download_type['generic'])
 
@@ -857,7 +809,7 @@ class scrapers(object):
 
         return self.box
 
-class ibdl(object):
+class ibdl():
 
     imageboard_name = destination = None
 
@@ -866,14 +818,13 @@ class ibdl(object):
         self.current_url = site
 
         if dest is not None:
-            variables.save_directory = dest
+            download.save_directory = dest
 
-        variables.use_sep_dir = sepdir
+        download.use_sep_dir = sepdir
 
         self.detect_site()
 
-        self.download_images(self.check_list(getattr(scrapers,
-            self.get_function(self.imageboard_name))(a=site), cdir=dirn))
+        self.download_images(self.check_list(getattr(scrapers, self.get_function(self.imageboard_name))(a=site), cdir=dirn))
 
     def create_destination(self, a):
         if not os.path.exists(a):
@@ -882,23 +833,23 @@ class ibdl(object):
             except PermissionError:
                 raise ErrorCreatingDirectory
             except:
-                pass
+                raise ErrorCreatingDirectory
 
     def download(self, site, uniq, url, name=None, dtype=download.download_type['generic']):
 
         '''This will assign a download function to the current item and download it'''
 
-        # If the item doesn't have a name we strip the filename from the URL and use that
+        # If the item doesn't have a name we strip the filename from the URL and try to use that
         if name is None:
             name = (url.split('/')[len(url.split('/'))-1])
         else:
             name = (utils.sanitize_filename(name))
 
         # Where we are going to save the item
-        if variables.use_sep_dir == True:
-            destination = ('{}/{}/{}'.format(variables.save_directory, uniq, name)).replace('//', '/')
+        if download.use_sep_dir == True:
+            destination = os.path.join(download.save_directory, uniq, name)
         else:
-            destination = ('{}/{}'.format(variables.save_directory, name)).replace('//', '/')
+            destination = os.path.join(download.save_directory, name)
 
         if not os.path.exists(destination):
             # Create base directory if it doesn't exist
@@ -916,31 +867,31 @@ class ibdl(object):
 
         else:
             # If the item (destination) already exists we skip it
-            return [variables.dict_return_codes['skip'], 'Skipped {}'.format(destination)]
+            return (dict_return_codes['skip'], 'Skipped {}'.format(destination))
 
     def detect_site(self):
 
         '''Match the passed URL against the regex table to find what site we are dealing with'''
 
         # Search through a list of known sites
-        for s, r in variables.sites_regex_table.items():
+        for s, r in sites_regex_table.items():
             match = re.search(r, self.current_url)
 
             if match:
-                self.imageboard_name = variables.imageboard_name = s
+                self.imageboard_name = imageboard_name = s
                 report(s, self.current_url)
 
         # If no known site is found try to search the site source for a matching imageboard
         if self.imageboard_name is None:
             unknown_site = scrapers.request(self.current_url)
 
-            for s, r in variables.adaptive_regex_table.items():
+            for s, r in adaptive_regex_table.items():
 
                 if isinstance(r, list):
                     for x in r:
                         match = re.search(x, unknown_site[0])
                         if match:
-                            self.imageboard_name = variables.imageboard_name = s
+                            self.imageboard_name = imageboard_name = s
                             report(s, self.current_url)
 
                 else:
@@ -948,7 +899,7 @@ class ibdl(object):
                     match = re.search(r, unknown_site[0])
 
                     if match:
-                        self.imageboard_name = variables.imageboard_name = s
+                        self.imageboard_name = imageboard_name = s
                         report(s, self.current_url)
 
         # If both searches are unsuccessful raise not supported error
@@ -959,7 +910,7 @@ class ibdl(object):
 
         '''Returns the scraper function we are going to use'''
 
-        for s, r in variables.dict_number_converter.items():
+        for s, r in dict_number_converter.items():
             site = str.replace(site, s, r)
 
         return site
@@ -997,9 +948,12 @@ class ibdl(object):
 
         if len(items[0]) > 0:
             if items[1][1:] == items[1][:-1]:
-                report('info', os.path.normpath('Downloading to: {}/{}'.format(variables.save_directory, items[1][0])))
+                if download.use_sep_dir == True:
+                    report('info', os.path.normpath('Downloading to: {}/{}'.format(download.save_directory, items[1][0])))
+                else:
+                    report('info', os.path.normpath('Downloading to: {}'.format(download.save_directory)))
             else:
-                report('info', 'Downloading to: ' + variables.save_directory)
+                report('info', 'Downloading to: ' + download.save_directory)
 
         # Start download processes
         r = [pool.apply_async(self.download, (main_item,
@@ -1017,12 +971,12 @@ class ibdl(object):
                 current_item = len(results)
                 code = results[len(results) - 1][0]
 
-                if code is not 1 and code is not 2:
+                if code != 1 and code != 2:
                     string_code = utils.return_code_to_string(code)
                     work_report = results[len(results) - 1][1]
 
                     # Print the current item and total progress
-                    if work_report is not False:
+                    if work_report != False:
                         count = utils.format_count(len(items[0]), current_item)
                         report(string_code, '{} - {}'.format(count, work_report))
 
@@ -1050,13 +1004,12 @@ def main():
     if not (sys.version_info > (3, 0)):
         report('info', 'This script requires Python 3+'); sys.exit(0)
 
-    parser = argparse.ArgumentParser(description = 'Imageboard Downloader')
+    parser = argparse.ArgumentParser(description = "Imageboard Downloader [{}]".format(version))
     parser.add_argument('urls', default = [], nargs = '*', help = 'one or more URLs to scrape')
     parser.add_argument('-p', dest = 'path', default = None, help = 'where to save files (default is working directory)', required = False)
     parser.add_argument('-x', dest='x', action='store_true', help = 'disables saving files into separate folders (see -d)', required = False)
     parser.add_argument('-d', dest = 'directory_name',default = None, help = 'name of a separate folder to save files into \
     (this folder will be created inside the path, default is a unique name fetched from the URL)', required = False)
-    parser.add_argument('-s', dest='s', action='store_true', help='display the available scrapers', required = False)
     parser.add_argument('-v', dest='v', action='store_true', help='show current version', required = False)
 
     # Retrieve arguments
@@ -1065,11 +1018,7 @@ def main():
     try:
         # Print current version
         if args.v:
-            report('version', variables.version); sys.exit(0)
-
-        # Print supported sites
-        if args.s:
-            utils.get_supported_sites(); sys.exit(0)
+            report('version', version); sys.exit(0)
 
         # Check if URL(s) were passed, if so go through them and if not exit
         if len(args.urls) == 0:
@@ -1078,7 +1027,7 @@ def main():
         else:
             # Go through URL(s)
             for url in args.urls:
-                scraper = ibdl(url, args.path, args.directory_name, not args.x)
+                ibdl(url, args.path, args.directory_name, not args.x)
 
     # Exceptions
     except ErrorRequest as exception:
@@ -1090,8 +1039,8 @@ def main():
         else:
             report('error', 'Error requesting page (code: {})'.format(error_code))
 
-        if error_code in variables.possible_reasons:
-            report('info', 'Possible reasons: ' + variables.possible_reasons[error_code][0])
+        if error_code in possible_reasons:
+            report('info', 'Possible reasons: ' + possible_reasons[error_code][0])
 
     except ErrorNotSupported:
         report('error', 'Unsupported URL')
