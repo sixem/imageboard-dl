@@ -33,7 +33,7 @@ import hashlib
 imageboard_name = None
 
 # Current Version - D/M/Y
-version = "1.0.59 - 2018-01-04"
+version = "1.0.60 - 2019-03-23"
 
 # General values
 general_vars = {
@@ -45,7 +45,7 @@ general_vars = {
 
 # Request headers
 req_headers = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:57.0) Gecko/20100101 Firefox/57.0',
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:66.0) Gecko/20100101 Firefox/66.0',
     'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Encoding': 'gzip, deflate',
@@ -56,18 +56,17 @@ req_headers = {
 sites_regex_table = {
     '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
-    '4chan': '((https?:\/\/)(?:www.)?boards.4chan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+    '4chan': '((https?:\/\/)(?:www.)?(?:boards).(?:4chan|4channel).org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
     '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
     '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-    'arhivach': '((https?:\/\/)(?:www.)?arhivach.org\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
-    'vichan': '((https?:\/\/)(?:www.)?brchan.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
+    'arhivach': '((https?:\/\/)(?:www.)?arhivach.(?:org|tk|ng)\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
     'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
-    'krautchan': '(https?:\/\/krautchan\.net\/([A-Za-z]{1,5})\/thread-([0-9]{1,})\.html)',
     'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
     'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})'
     }
 
+# Regex table used for identifying HTML code to sites if the default table (above) returns no matches
 adaptive_regex_table = {
     'foolfuuka': [
     '<link rel=[\'"]stylesheet[\'"] type=[\'"]text\/css[\'"] href=[\'"](?:.*)\/foolfuuka\/foolz\/(?:.*)\.css[\'"]>',
@@ -110,7 +109,7 @@ dict_return_codes = {
     'error': 4
     }
 
-valid_filenames = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm', 'mp3']
+valid_extensions = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm', 'mp3']
 
 def report(site, message):
     print('[{}] {}'.format(site, message))
@@ -276,7 +275,7 @@ class utils():
         return x
 
     def validate_image_url(url):
-        for x in valid_filenames:
+        for x in valid_extensions:
             if url.lower().endswith(x):
                 return True
         return False
@@ -543,33 +542,6 @@ class scrapers():
 
         else:
             report('info', 'This is not an album.')
-
-        return self.box
-
-    @classmethod
-    def krautchan(self, a ,site="krautchan", uniq=None):
-
-        '''krautchan.net Downloader'''
-
-        p = self.establish(a, site)
-
-        uniq = str(str(p.find("input", {"name" : "board"})['value'] + p.find("input", {"name" : "parent"})['value']))
-
-        posts = p.findAll("div", {"class" : "file_reply"})
-
-        op_header = p.find("div", {"class" : "file_thread"})
-        op_url = 'http://krautchan.net' + op_header.findAll("a")[0]['href']
-        op_post = p.find("span", {"class" : "filename"}).find("a")['href']
-
-        queue.file(site, uniq, op_url, utils.get_filename_from_url(op_url), download.download_type['cloudflare'])
-
-        for post in posts:
-
-            filename = post.findAll("span")[0].text
-
-            url = 'http://krautchan.net' + post.find("span", {"class" : "filename"}).find("a")['href']
-
-            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
 
         return self.box
 
