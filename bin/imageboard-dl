@@ -12,7 +12,8 @@ usage: imageboard-dl [-h] [-v] [-s] [-x] [-p PATH] [-d DIRECTORY] URL(s)
 from bs4 import BeautifulSoup
 from os.path import expanduser
 
-import multiprocessing as mp
+import asyncio
+
 import re
 import os
 import json
@@ -32,8 +33,10 @@ import hashlib
 
 imageboard_name = None
 
+debugging = False
+
 # Current Version - D/M/Y
-version = "1.0.60 - 2019-03-23"
+version = "1.0.61 - 2019-04-26"
 
 # General values
 general_vars = {
@@ -54,13 +57,13 @@ req_headers = {
 
 # Regex table used to identify known URLs being passed
 sites_regex_table = {
-    '2ch.hk': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-    '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/[A-Za-z]{1,}\/thread\/[0-9]{1,}',
-    '4chan': '((https?:\/\/)(?:www.)?(?:boards).(?:4chan|4channel).org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
+    '4archive': '(https?:\/\/(?:www.)?(?:4archive\.org|randomarchive\.com))\/board\/([A-Za-z]{1,})\/thread\/([0-9]{1,})',
+    '4chan': '((https?:\/\/)(?:www.)?boards.(?:4chan|4channel).org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
     '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
     '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     'arhivach': '((https?:\/\/)(?:www.)?arhivach.(?:org|tk|ng)\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
+    'dvach': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
     'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
     'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})'
@@ -72,7 +75,9 @@ adaptive_regex_table = {
     '<link rel=[\'"]stylesheet[\'"] type=[\'"]text\/css[\'"] href=[\'"](?:.*)\/foolfuuka\/foolz\/(?:.*)\.css[\'"]>',
     '<script src=[\'"](?:.*)\/foolfuuka\/foolz\/foolfuuka-(?:.*)\.js[\'"]><\/script>'
     ],
-
+    '4chan': [
+    'href=\"\/\/ii.yuki\.la\/'
+    ],
     'vichan': [
     '<body class=[\'"][A-Za-z0-9]{1,}? vichan [A-Za-z0-9-]{1,}? [A-Za-z0-9-]{1,}?[\'"] data-stylesheet=[\'"]default[\'"]>',
     '<a href=[\'"]https?:\/\/([A-Za-z/.]{1,})?vichan\.net([A-Za-z/.]{1,})?[\'"]>vichan<\/a>',
@@ -114,6 +119,10 @@ valid_extensions = ['bmp', 'gif', 'jpg', 'jpeg', 'mp4', 'png', 'webm', 'mp3']
 def report(site, message):
     print('[{}] {}'.format(site, message))
 
+def print_debug(category, message):
+    if debugging == True:
+        print('\033[93m[debug:{}] {}\033[0m'.format(category, str(message)))
+
 class download():
 
     # Default save directory (current working directory)
@@ -129,6 +138,7 @@ class download():
         'content-disposition': 3
         }
 
+    @asyncio.coroutine
     def generic(site, url, destination, name, x='generic'):
 
         '''Generic Downloader'''
@@ -136,6 +146,11 @@ class download():
         try:
             req = requests.get(url, headers=req_headers,
                                timeout=general_vars['cfs_timeout'])
+
+            print_debug('request', "URL: {} (Status: {}, Content: {})".format(
+                url, req.status_code, req.headers['content-type'])
+            )
+
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
             except:
@@ -143,7 +158,10 @@ class download():
 
             if req.status_code == 200:
 
-                open(destination, 'wb').write(req.content)
+                try:
+                    open(destination, 'wb').write(req.content)
+                except Exception as e:
+                    print_debug('error', str(e))
 
                 if os.path.exists(destination):
                     if size == False:
@@ -156,8 +174,10 @@ class download():
                 return (dict_return_codes['error'], '{}: {}'.format(req.status_code, name))
 
         except Exception as e:
+            print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
+    @asyncio.coroutine
     def cloudflare(site, url, destination, name, x='cloudflare'):
 
         '''Cloudflare Downloader'''
@@ -167,6 +187,10 @@ class download():
             cfs = cfscrape.create_scraper()
             req = cfs.get(url, headers=req_headers,
                          timeout=general_vars['cfs_timeout'], stream=True)
+
+            print_debug('request', "URL: {} (Status: {}, Content: {})".format(
+                url, req.status_code, req.headers['content-type'])
+            )
 
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
@@ -189,9 +213,11 @@ class download():
             else:
                 return (dict_return_codes['error'], '{}: {}'.format(req.status_code, name))
 
-        except:
+        except Exception as e:
+            print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
+    @asyncio.coroutine
     def contentdisposition(site, url, destination, name, x='content-disposition'):
 
         '''Content-Disposition (Attachment) Downloader'''
@@ -199,6 +225,10 @@ class download():
         try:
             req = requests.get(url, headers=req_headers,
                                timeout=general_vars['cfs_timeout'])
+
+            print_debug('request', "URL: {} (Status: {}, Content: {})".format(
+                url, req.status_code, req.headers['content-type'])
+            )
 
             try:
                 size = utils.sizeof_fmt(int(req.headers['content-length']))
@@ -210,7 +240,11 @@ class download():
                 rm = re.search('attachment; filename="(.*)"', req.headers['Content-Disposition'])
 
                 if rm:
-                    open(destination, 'wb').write(req.content)
+                    try:
+                        open(destination, 'wb').write(req.content)
+                    except Exception as e:
+                        print_debug('error', str(e))
+
                     if os.path.exists(destination):
                         if size == False:
                             return (dict_return_codes['download'], name)
@@ -222,7 +256,8 @@ class download():
             else:
                 return (dict_return_codes['error'],'{}: {}'.format(req.status_code, name))
 
-        except:
+        except Exception as e:
+            print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
 class queue():
@@ -431,7 +466,7 @@ class scrapers():
             raise ErrorRequest(request[3].status_code)
 
     @classmethod
-    def foolfuuka(self, a, site="foolfuuka", uniq=None):
+    def foolfuuka(self, a, site="foolfuuka", match=None, uniq=None):
 
         '''FoolFuuka Downloader'''
 
@@ -474,7 +509,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def warosu_org(self, a, site="warosu.org", uniq=None):
+    def warosu_org(self, a, site="warosu.org", match=None, uniq=None):
 
         '''warosu.org Downloader'''
 
@@ -517,7 +552,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def imgurxalbum(self, a ,site="imgur:album", uniq=None):
+    def imgurxalbum(self, a ,site="imgur:album", match=None, uniq=None):
 
         '''imgur.com Downloader'''
 
@@ -546,7 +581,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def sevenchan_org(self, a ,site="7chan.org", uniq=None):
+    def sevenchan_org(self, a ,site="7chan.org", match=None, uniq=None):
 
         '''7chan.org Downloader'''
 
@@ -579,7 +614,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def arhivach(self, a, site="arhivach", uniq=None):
+    def arhivach(self, a, site="arhivach", match=None, uniq=None):
 
         '''arhivach.org Downloader'''
 
@@ -620,11 +655,11 @@ class scrapers():
         return self.box
 
     @classmethod
-    def twoch_hk(self, a, site="2ch.hk", uniq=None):
+    def dvach(self, a, site="dvach", match=None, uniq=None):
 
         '''2ch.(hk, pm, re, tf, wf, yt, so) Downloader'''
 
-        rm = re.search(sites_regex_table['2ch.hk'], a)
+        rm = re.search(sites_regex_table['dvach'], a)
         uniq = rm.group(3) + rm.group(5)
 
         json_url = ('{}2ch.hk/{}/res/{}.json'.format(rm.group(2), rm.group(3), rm.group(5)))
@@ -646,7 +681,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def fourarchive(self, a, site="4archive", uniq=None):
+    def fourarchive(self, a, site="4archive", match=None, uniq=None):
 
         '''4archive.org Downloader'''
 
@@ -654,6 +689,10 @@ class scrapers():
 
         posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
         uniq = p.find("div", {"class" : "thread"})['id'].__str__()
+
+        if match != None:
+            if len(match.groups()) == 3:
+                uniq = "{}{}".format(match.group(2), match.group(3))
 
         for post in posts:
 
@@ -673,7 +712,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def fourchan(self, a, site="4chan", uniq=None):
+    def fourchan(self, a, site="4chan", match=None, uniq=None):
 
         '''4chan.org Downloader'''
 
@@ -681,6 +720,10 @@ class scrapers():
 
         posts = p.findAll("div", {"class" : ["postContainer", "opContainer"]})
         uniq = p.find("div", {"class" : "thread"})['id'].__str__()
+
+        if match != None:
+            if len(match.groups()) == 5:
+                uniq = "{}{}".format(match.group(3), match.group(5))
 
         for post in posts:
 
@@ -697,7 +740,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def eightchan(self, a, site="8chan", uniq=None):
+    def eightchan(self, a, site="8chan", match=None, uniq=None):
 
         '''8chan (Infinitychan) Downloader'''
 
@@ -705,6 +748,10 @@ class scrapers():
 
         fi = p.findAll("p", {"class" : "fileinfo"})
         uniq = p.find("div", {"class" : "thread"}).find("a", {"class" : "post_anchor"})['id']
+
+        if match != None:
+            if len(match.groups()) == 5:
+                uniq = "{}{}".format(match.group(3), match.group(5))
 
         for f in fi:
             filename = f.find("span", {"class" : "unimportant"}).find("span",
@@ -719,7 +766,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def fourplebs(self, a, site="4plebs", uniq=None):
+    def fourplebs(self, a, site="4plebs", match=None, uniq=None):
 
         '''4plebs.org Downloader'''
 
@@ -735,7 +782,7 @@ class scrapers():
         return self.box
 
     @classmethod
-    def vichan(self, a, site="vichan", uniq=None):
+    def vichan(self, a, site="vichan", match=None, uniq=None):
 
         '''vichan Downloader'''
 
@@ -785,6 +832,12 @@ class ibdl():
 
     imageboard_name = destination = None
 
+    current = 0
+
+    r_semaphore = asyncio.Semaphore(10)
+
+    loop = asyncio.get_event_loop()
+
     def __init__(self, site, dest, dirn, sepdir):
 
         self.current_url = site
@@ -796,7 +849,9 @@ class ibdl():
 
         self.detect_site()
 
-        self.download_images(self.check_list(getattr(scrapers, self.get_function(self.imageboard_name))(a=site), cdir=dirn))
+        method = getattr(scrapers, self.get_function(self.imageboard_name))
+
+        self.download_images(self.check_list(method(a=site, match=self.matched), cdir=dirn))
 
     def create_destination(self, a):
         if not os.path.exists(a):
@@ -807,9 +862,12 @@ class ibdl():
             except:
                 raise ErrorCreatingDirectory
 
-    def download(self, site, uniq, url, name=None, dtype=download.download_type['generic']):
+    @asyncio.coroutine
+    async def download(self, site, uniq, url, name=None, dtype=download.download_type['generic'], length=0):
 
         '''This will assign a download function to the current item and download it'''
+
+        self.current = self.current + 1
 
         # If the item doesn't have a name we strip the filename from the URL and try to use that
         if name is None:
@@ -829,13 +887,22 @@ class ibdl():
 
             # Assign a download function and download the item
             if dtype == download.download_type['cloudflare']:
-                return download.cloudflare(site, url, destination, name)
+                response = await download.cloudflare(site, url, destination, name)
             elif dtype == download.download_type['generic']:
-                return download.generic(site, url, destination, name)
+                response = await download.generic(site, url, destination, name)
             elif dtype == download.download_type['content-disposition']:
-                return download.contentdisposition(site, url, destination, name)
+                response = await download.contentdisposition(site, url, destination, name)
             else:
-                return download.generic(site, url, destination, name)
+                response = await download.generic(site, url, destination, name)
+
+            if response[0] != 1 and response[0] != 2:
+                string_code = utils.return_code_to_string(response[0])
+
+                # Print the current item and total progress
+                if response[1] != False:
+                    report(string_code, '{} - {}'.format(utils.format_count(length, self.current), response[1]))
+
+            return response
 
         else:
             # If the item (destination) already exists we skip it
@@ -850,6 +917,7 @@ class ibdl():
             match = re.search(r, self.current_url)
 
             if match:
+                self.matched = match
                 self.imageboard_name = imageboard_name = s
                 report(s, self.current_url)
 
@@ -863,6 +931,7 @@ class ibdl():
                     for x in r:
                         match = re.search(x, unknown_site[0])
                         if match:
+                            self.matched = match
                             self.imageboard_name = imageboard_name = s
                             report(s, self.current_url)
 
@@ -871,6 +940,7 @@ class ibdl():
                     match = re.search(r, unknown_site[0])
 
                     if match:
+                        self.matched = match
                         self.imageboard_name = imageboard_name = s
                         report(s, self.current_url)
 
@@ -887,7 +957,7 @@ class ibdl():
 
         return site
 
-    def check_list(self, lst, cdir=None):
+    def check_list(self, lst, match=None, cdir=None):
 
         temp = []
         count = 2
@@ -895,9 +965,13 @@ class ibdl():
         if cdir is not None:
             for c, q in enumerate(lst[1]):
                 lst[1][c] = cdir
+        else:
+            for c, q in enumerate(lst[1]):
+                lst[4][c] = match
+
 
         for i, x in enumerate(lst[3]):
-            # Check if a item (file) has a duplicate - if so rename it
+            # Check if a item (file) has a duplicate, if so rename it
             if lst[3][i] not in temp:
                 temp.append(lst[3][i])
             else:
@@ -910,13 +984,19 @@ class ibdl():
 
         return lst
 
-    def download_images(self, items, current_item = 0):
+    def download_images(self, items, match = None, current_item = 0):
 
         '''Download the items returned from the scraper'''
 
-        # Create a new pool
-        pool = mp.Pool()
         results = []
+
+        self.current = 0
+
+        if match != None:
+            print_debug('info', "Match (Regex): " + str(match.groups()))
+
+            if len(match.groups()) == 5:
+                print(match.groups())
 
         if len(items[0]) > 0:
             if items[1][1:] == items[1][:-1]:
@@ -927,30 +1007,14 @@ class ibdl():
             else:
                 report('info', 'Downloading to: ' + download.save_directory)
 
-        # Start download processes
-        r = [pool.apply_async(self.download, (main_item,
-                                              items[1][x],
-                                              items[2][x],
-                                              items[3][x],
-                                              items[4][x]
-                                              ),
-                              callback = results.append) for x, main_item in enumerate(items[0])]
+        print_debug('info', "Initiating download process for " + str(len(items[0])) + " item(s) ..")
 
-        # While it's downloading we display the progress
-        while len(results) < len(items[0]):
+        coroutines = [self.download(
+            main_item, items[1][x], items[2][x], items[3][x], items[4][x], len(items[0])
+            ) for x, main_item in enumerate(items[0])
+        ]
 
-            if len(results) > current_item:
-                current_item = len(results)
-                code = results[len(results) - 1][0]
-
-                if code != 1 and code != 2:
-                    string_code = utils.return_code_to_string(code)
-                    work_report = results[len(results) - 1][1]
-
-                    # Print the current item and total progress
-                    if work_report != False:
-                        count = utils.format_count(len(items[0]), current_item)
-                        report(string_code, '{} - {}'.format(count, work_report))
+        results = self.loop.run_until_complete(asyncio.gather(*coroutines))
 
         return_codes = []
 
@@ -964,7 +1028,7 @@ class ErrorRequest(Exception):
     '''Raised if the page returns a bad status code'''
 
 class ErrorNotSupported(Exception):
-    '''Raised if the url can't be parsed and or identified'''
+    '''Raised if the url can't be parsed and/or identified'''
 
 class ErrorCreatingDirectory(Exception):
     '''Raised if directory could not be created'''
@@ -983,6 +1047,7 @@ def main():
     parser.add_argument('-d', dest = 'directory_name',default = None, help = 'name of a separate folder to save files into \
     (this folder will be created inside the path, default is a unique name fetched from the URL)', required = False)
     parser.add_argument('-v', dest='v', action='store_true', help='show current version', required = False)
+    parser.add_argument('--debug', dest='debug', action='store_true', help='print debug information', required = False)
 
     # Retrieve arguments
     args = parser.parse_args()
@@ -992,7 +1057,16 @@ def main():
         if args.v:
             report('version', version); sys.exit(0)
 
-        # Check if URL(s) were passed, if so go through them and if not exit
+        # Enable debugging if paramater is passed
+        if args.debug:
+            global debugging
+            debugging = True
+
+            for arg in args.__dict__:
+                if args.__dict__[arg] is not None:
+                    print_debug('info', "Args => (" + str(arg) + "): " + str(args.__dict__[arg]))
+
+        # Check if URL(s) were passed, if so go through them, if not exit
         if len(args.urls) == 0:
             # Exit
             report('info', 'No URLs were passed - exiting'); sys.exit(0)
@@ -1000,6 +1074,8 @@ def main():
             # Go through URL(s)
             for url in args.urls:
                 ibdl(url, args.path, args.directory_name, not args.x)
+
+            ibdl.loop.close()
 
     # Exceptions
     except ErrorRequest as exception:

@@ -2,7 +2,7 @@
 **Image downloader/scraper for various imageboards and image albums written in Python.**
 
 ### Requirements
-+ Python 3+
++ Python 3.4+
 
 # Installing
 ## Git
@@ -26,8 +26,9 @@
 + `-p` : Where to download to. By default it will use your current working directory.
 + `-x` : Disables saving files into separate folders (see -d).
 + `-d`: Name of a separate folder for saving files into (this folder will be created inside the current path, default is a unique name fetched from the URL). This feature can be disabled by using `-x`, if so the files will be downloaded directly into the selected path instead.
++ `--debug` : Print some (very) basic debugging information.
 
-### Basic usage examaple:
+### Basic usage example:
 
 `imageboard-dl https://boards.4chan.org/b/thread/1292929292 -p "/home/user/Downloads/"`
 
