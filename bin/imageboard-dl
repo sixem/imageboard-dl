@@ -44,7 +44,7 @@ imageboard_name = None
 debugging = False
 
 # Current Version - D/M/Y
-version = "1.0.62 - 2019-09-22"
+version = "1.0.63 - 2019-09-22"
 
 # General values
 general_vars = {
@@ -1027,6 +1027,8 @@ class ibdl():
         ibdl.maximum_threads = int(threads)
 
         ibdl.sleep = float(sleep)
+
+        ibdl.current = 0
 
         if dest is not None:
             download.save_directory = dest
