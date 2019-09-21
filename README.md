@@ -18,11 +18,10 @@
 
 # Usage
 
-### `imageboard-dl [-h] [-v] [-s] [-x] [-t] [-s] [-p PATH] [-d DIRECTORY] URL(s)`
+### `imageboard-dl [-h] [-v] [-x] [-t] [-s] [-p PATH] [-d DIRECTORY] URL(s)`
 
 + `-h` : Show a help dialog.
 + `-v` : Print the current version.
-+ `-s` : Show a list of supported scrapers.
 + `-p` : Where to download to. By default it will use your current working directory.
 + `-x` : Disables saving files into separate folders (see -d).
 + `-d`: Name of a separate folder for saving files into (this folder will be created inside the current path, default is a unique name fetched from the URL). This feature can be disabled by using `-x`, if so the files will be downloaded directly into the selected path instead.
