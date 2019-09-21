@@ -18,7 +18,7 @@
 
 # Usage
 
-### `imageboard-dl [-h] [-v] [-s] [-x] [-p PATH] [-d DIRECTORY] URL(s)`
+### `imageboard-dl [-h] [-v] [-s] [-x] [-t] [-s] [-p PATH] [-d DIRECTORY] URL(s)`
 
 + `-h` : Show a help dialog.
 + `-v` : Print the current version.
