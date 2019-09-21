@@ -12,8 +12,6 @@ usage: imageboard-dl [-h] [-v] [-s] [-x] [-p PATH] [-d DIRECTORY] URL(s)
 from bs4 import BeautifulSoup
 from os.path import expanduser
 
-import asyncio
-
 import re
 import os
 import json
@@ -31,12 +29,22 @@ import sys
 import mimetypes
 import hashlib
 
+try:
+    import queue
+except ImportError:
+    import Queue as queue
+
+import time
+
+import threading
+from threading import Thread
+
 imageboard_name = None
 
 debugging = False
 
 # Current Version - D/M/Y
-version = "1.0.61 - 2019-04-26"
+version = "1.0.62 - 2019-09-22"
 
 # General values
 general_vars = {
@@ -62,11 +70,12 @@ sites_regex_table = {
     '4plebs': '((https?:\/\/)(?:www.)?archive.4plebs.org\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}))',
     '7chan.org': '((https?:\/\/)(?:www.)?7chan.org\/([A-Za-z0-9]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     '8chan': '((https?:\/\/)(?:www.)?8ch.(?:net|pl)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
-    'arhivach': '((https?:\/\/)(?:www.)?arhivach.(?:org|tk|ng)\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
+    'arhivach': '((https?:\/\/)(?:www.)?arhivach.(?:[A-Za-z]{1,})\/[A-Za-z]{1,10}\/([0-9]{1,})\/)',
     'dvach': '((https?:\/\/)(?:www.)?2-?ch.(?:hk|pm|re|tf|wf|yt|so)\/([A-Za-z]{1,10})\/([A-Za-z]{1,10})\/([0-9]{1,}).html)',
     'imgur:album': 'https?:\/\/(?:www.)?(?:m.)?imgur.com\/(a|gallery)\/([0-9A-Za-z]{1,})',
     'warosu.org': '(https?:\/\/(?:www.)?warosu.org\/([A-Za-z0-9]{1,})\/thread/([0-9]{1,}))',
-    'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})'
+    'foolfuuka': 'https?:\/\/(?:www.)?(archiveofsins\.com|archived?\.moe)\/([A-Za-z0-9]{1,})\/thread\/([0-9]{1,})',
+    'sankaku': '((?:https?:\/\/)(?:www.)?(?:chan.)?(?:sankakucomplex).com)\/?(?:.*)?',
     }
 
 # Regex table used for identifying HTML code to sites if the default table (above) returns no matches
@@ -87,7 +96,8 @@ adaptive_regex_table = {
 
 # Possible reasons for a error code (requests)
 possible_reasons = {
-    403: ['Are you using a VPN / Proxy?']
+    403: ['Are you using a VPN / Proxy?'],
+    429 : ['Server limits requests. Try setting a sleep interval.']
     }
 
 # Used for site to function convertion
@@ -138,7 +148,6 @@ class download():
         'content-disposition': 3
         }
 
-    @asyncio.coroutine
     def generic(site, url, destination, name, x='generic'):
 
         '''Generic Downloader'''
@@ -177,7 +186,6 @@ class download():
             print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
-    @asyncio.coroutine
     def cloudflare(site, url, destination, name, x='cloudflare'):
 
         '''Cloudflare Downloader'''
@@ -217,7 +225,6 @@ class download():
             print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
-    @asyncio.coroutine
     def contentdisposition(site, url, destination, name, x='content-disposition'):
 
         '''Content-Disposition (Attachment) Downloader'''
@@ -260,7 +267,7 @@ class download():
             print_debug('error', str(e))
             return (dict_return_codes['error'], False)
 
-class queue():
+class que():
     @staticmethod
     def file(site, uniq, url, filename, downloader):
 
@@ -416,8 +423,12 @@ class scrapers():
 
     box = [[], [], [], [], []]
 
+    recent_error = None
+
     @classmethod
     def request(self, url, use_cookies=None):
+        if ibdl.sleep > 0:
+            time.sleep(ibdl.sleep)
 
         cfs = cfscrape.create_scraper()
 
@@ -434,14 +445,27 @@ class scrapers():
         if request.status_code is 200:
             return (request.text, request.cookies, response_ip, request)
         else:
+            self.recent_error = request.status_code
             raise ErrorRequest(request.status_code)
+
+    @classmethod
+    def request_direct(self, url, use_cookies=None):
+        if ibdl.sleep > 0:
+            time.sleep(ibdl.sleep)
+
+        cfs = cfscrape.create_scraper()
+
+        request = cfs.get(url, headers = req_headers,
+            timeout = general_vars['cfs_timeout'], cookies = use_cookies, stream=True)
+
+        return request
 
     @classmethod
     def establish(self, a, site, v=True, bs=True, rb=True, ra=False):
 
-        request = self.request(a)
-
         try:
+            request = self.request(a)
+
             if rb is True:
                 self.box = [[], [], [], [], []]
 
@@ -462,8 +486,30 @@ class scrapers():
                     return request
                 else:
                     return request[0]
-        except:
-            raise ErrorRequest(request[3].status_code)
+        except ErrorRequest as exception:
+            error_code = int(str(exception))
+            status_code = utils.request_code_to_string(error_code)
+
+            if status_code is not False:
+                report('error', 'Error requesting page (code: {} - {})'.format(error_code, status_code))
+            else:
+                report('error', 'Error requesting page (code: {})'.format(error_code))
+            return False
+
+    @classmethod
+    def download_partial(self, box, verbal=False, custom=False):
+        if box == False or box == None or len(box) < 1:
+            print_debug('info', 'Partial download received invalid item type.')
+            return
+
+        items = ibdl.check_list(self.box, cdir=ibdl.dirn)
+        # If custom is true, attempt to continue the download count from previous partial downloads.
+        if custom != False:
+            custom = ibdl.current + len(items[0])
+
+        ibdl.download_images(items, v=verbal, custom_length=custom)
+
+        self.box = []
 
     @classmethod
     def foolfuuka(self, a, site="foolfuuka", match=None, uniq=None):
@@ -502,9 +548,9 @@ class scrapers():
                 rm = re.search('content="[0-9]{1,}; url=(.*)">', p)
 
                 if rm:
-                    queue.file(site, uniq, rm.group(1), post_link[1][x], download.download_type['cloudflare'])
+                    que.file(site, uniq, rm.group(1), post_link[1][x], download.download_type['cloudflare'])
             else:
-                queue.file(site, uniq, url, post_link[1][x], download.download_type['cloudflare'])
+                que.file(site, uniq, url, post_link[1][x], download.download_type['cloudflare'])
 
         return self.box
 
@@ -526,7 +572,7 @@ class scrapers():
         else:
             filename = utils.get_filename_from_url(url)
 
-        queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+        que.file(site, uniq, url, filename, download.download_type['cloudflare'])
 
         replies = p.findAll("td", {"class" : "reply"})
 
@@ -544,7 +590,7 @@ class scrapers():
                         else:
                             filename = utils.get_filename_from_url(url)
 
-                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                que.file(site, uniq, url, filename, download.download_type['cloudflare'])
 
             except:
                 pass
@@ -573,7 +619,7 @@ class scrapers():
                 filename = '{}{}'.format(image['hash'], extension)
                 url = 'https://i.imgur.com/{}'.format(filename)
 
-                queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
+                que.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
 
         else:
             report('info', 'This is not an album.')
@@ -599,7 +645,7 @@ class scrapers():
             if rm: filename = rm.group(4)
             else: filename = image.find("a").contents[0].__str__().replace('\n', '')
 
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
+            que.file(site, uniq, url, filename, download.download_type['generic'])
 
         for m_image in multi_images:
             url = m_image['src'].replace('thumb', 'src').replace('s.', '.')
@@ -609,7 +655,7 @@ class scrapers():
             if rm: filename = rm.group(4)
             else: filename = m_image['title'].__str__()
 
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
+            que.file(site, uniq, url, filename, download.download_type['generic'])
 
         return self.box
 
@@ -650,7 +696,7 @@ class scrapers():
 
             if url is not None:
 
-                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                que.file(site, uniq, url, filename, download.download_type['cloudflare'])
 
         return self.box
 
@@ -676,7 +722,7 @@ class scrapers():
                     filename = file['path'].split('/')[int(file['path'].count('/'))]
 
                 url = ('{}2ch.hk{}'.format(rm.group(2), file['path']))
-                queue.file(site, uniq, url, filename, download.download_type['generic'])
+                que.file(site, uniq, url, filename, download.download_type['generic'])
 
         return self.box
 
@@ -704,10 +750,12 @@ class scrapers():
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
                 url = utils.clean_url(fi.find("a")['href'])
 
+                filename = filename.replace("Full size of ", "")
+
                 if url.startswith('/data/'):
                     url = (utils.re_find(sites_regex_table['4archive'], a, 1) + url)
 
-                queue.file(site, uniq, url, filename, download.download_type['generic'])
+                que.file(site, uniq, url, filename, download.download_type['generic'])
 
         return self.box
 
@@ -735,7 +783,7 @@ class scrapers():
                 if file_a.has_attr('title'): filename = file_a['title'].__str__()
                 url = utils.clean_url(fi.find("a")['href'])
 
-                queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                que.file(site, uniq, url, filename, download.download_type['cloudflare'])
 
         return self.box
 
@@ -761,7 +809,7 @@ class scrapers():
             if url.startswith('/'):
                 url = utils.get_base_url(a) + url
 
-            queue.file(site, uniq, url, filename, download.download_type['generic'])
+            que.file(site, uniq, url, filename, download.download_type['generic'])
 
         return self.box
 
@@ -777,7 +825,7 @@ class scrapers():
 
         for link in image_links:
             url = link['href'].__str__()
-            queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
+            que.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['generic'])
 
         return self.box
 
@@ -815,7 +863,7 @@ class scrapers():
                             filename = files.find("span", {"class" : "postfilename"}).contents[0]
                         except:
                             filename = utils.get_filename_from_url(url)
-                        queue.file(site, uniq, url, filename, download.download_type['cloudflare'])
+                        que.file(site, uniq, url, filename, download.download_type['cloudflare'])
                         found = True
 
             if found == False:
@@ -823,24 +871,162 @@ class scrapers():
                 for img_file in img_files:
                     if img_file.parent.has_attr('href'):
                         url = utils.patch_url(img_file.parent['href'], base_url)
-                        queue.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
+                        que.file(site, uniq, url, utils.get_filename_from_url(url), download.download_type['cloudflare'])
                         found = True
 
         return self.box
 
+    @classmethod
+    def sankaku_extend_get_next(self, p):
+        if p == False:
+            return [False, False]
+
+        pagination = p.findAll("div", {"class" : "pagination"})
+
+        for div in pagination:
+            if div.has_attr('next-page-url'):
+                return [True, div['next-page-url'].__str__()]
+
+        return [False, False]
+
+    @classmethod
+    def sankaku_extend_get_posts(self, p):
+        if p == False:
+            return []
+
+        posts = []
+
+        content = p.find("div", {"class" : "content"})
+
+        thumb_spans = p.findAll("span", {"class" : "thumb"})
+
+        for span in thumb_spans:
+            posts.append(span.find('a')['href'].__str__())
+
+        return posts
+
+    @classmethod
+    def sankaku_extend_get_full(self, url, site, uniq):
+        req = self.request_direct(url)
+
+        p = BeautifulSoup(req.text, "html.parser")
+
+        is_warned = False
+
+        if req.status_code != 200:
+            if req.status_code == 429:
+                report('error', 'Too many requests ..')
+            return
+
+        for c in p.findAll("div", {"id" : "post-content"}):
+            images = c.findAll(['video', 'img'])
+
+            for image in images:
+                if image.has_attr('src'):
+                    image_url = image['src']
+
+                    if image_url.startswith('//'):
+                        image_url = 'https:' + image_url
+
+                    rm = re.search("([a-zA-Z0-9_\.]{1,}\.(jpe?g|png|gif|webm|mp4))", image_url)
+
+                    if rm:
+                        filename = rm.group(1)
+                    else:
+                        filename = utils.get_filename_from_url(image_url.split('?e')[0])
+
+                    que.file(site, uniq, image_url, filename, download.download_type['cloudflare'])
+
+    @classmethod
+    def sankaku_extend_handler(self, p, url, site, uniq, verbal = False):
+        posts = self.sankaku_extend_get_posts(p)
+
+        threads = [None] * len(posts)
+
+        for i, post in enumerate(posts):
+            threads[i] = Thread(
+                target=self.sankaku_extend_get_full,
+                args=(url + post, site, uniq)
+            )
+
+            threads[i].start()
+
+            if ibdl.sleep > 0:
+                time.sleep(ibdl.sleep)
+
+            while threading.active_count() > ibdl.maximum_threads:
+                time.sleep(1)
+
+        for thread in threads:
+            thread.join()
+
+        self.download_partial(self.box, verbal, True)
+
+    @classmethod
+    def sankaku(self, a, site="sankaku", match=None, uniq=None):
+
+        '''sankaku Downloader'''
+
+        uniq = utils.get_unique_number_from_url(a)
+
+        p = self.establish(a, site)
+
+        if p == False:
+            return
+
+        rm = re.search(sites_regex_table['sankaku'], a)
+
+        if rm:
+            url = rm.group(1)
+        else:
+            return self.box
+
+        get_next = self.sankaku_extend_get_next(p)
+
+        report(site, 'Fetching full URLs from page ..')
+
+        self.sankaku_extend_handler(p, url, site, uniq, True)
+
+        while get_next[0] == True:
+            p = self.establish(url + get_next[1], site, v=False)
+
+            rm = re.search("page=([0-9]{1,})", get_next[1])
+
+            if rm:
+                report(site, 'Fetching next page (Page: ' + rm.group(1) + ') ..')
+            else:
+                report(site, 'Fetching next page ..')
+
+            self.sankaku_extend_handler(p, url, site, uniq, True)
+            get_next = self.sankaku_extend_get_next(p)
+
+        if self.recent_error == 429:
+            if self.recent_error in possible_reasons:
+                report('info', 'Possible reasons: ' + possible_reasons[self.recent_error][0])
+            else:
+                report('info', 'Request limit reached. Try setting a sleep interval.')
+
+        return False
+
 class ibdl():
 
-    imageboard_name = destination = None
+    imageboard_name = destination = thread_lock = None
+
+    _queue = queue.Queue()
+
+    thread_lock = threading.Lock()
 
     current = 0
 
-    r_semaphore = asyncio.Semaphore(10)
-
-    loop = asyncio.get_event_loop()
-
-    def __init__(self, site, dest, dirn, sepdir):
+    def __init__(self, site, dest, dirn, sepdir, threads = 32, sleep = 0):
 
         self.current_url = site
+
+        ibdl.dirn = dirn
+
+        ibdl.maximum_threads = int(threads)
+
+        ibdl.sleep = float(sleep)
 
         if dest is not None:
             download.save_directory = dest
@@ -853,21 +1039,22 @@ class ibdl():
 
         self.download_images(self.check_list(method(a=site, match=self.matched), cdir=dirn))
 
+    @classmethod
     def create_destination(self, a):
         if not os.path.exists(a):
             try:
                 os.makedirs(a)
+            except FileExistsError:
+                pass
             except PermissionError:
                 raise ErrorCreatingDirectory
             except:
                 raise ErrorCreatingDirectory
 
-    @asyncio.coroutine
-    async def download(self, site, uniq, url, name=None, dtype=download.download_type['generic'], length=0):
+    @classmethod
+    def download(self, site, uniq, url, name=None, dtype=download.download_type['generic'], length=0, v=True):
 
         '''This will assign a download function to the current item and download it'''
-
-        self.current = self.current + 1
 
         # If the item doesn't have a name we strip the filename from the URL and try to use that
         if name is None:
@@ -887,26 +1074,28 @@ class ibdl():
 
             # Assign a download function and download the item
             if dtype == download.download_type['cloudflare']:
-                response = await download.cloudflare(site, url, destination, name)
+                response = download.cloudflare(site, url, destination, name)
             elif dtype == download.download_type['generic']:
-                response = await download.generic(site, url, destination, name)
+                response = download.generic(site, url, destination, name)
             elif dtype == download.download_type['content-disposition']:
-                response = await download.contentdisposition(site, url, destination, name)
+                response = download.contentdisposition(site, url, destination, name)
             else:
-                response = await download.generic(site, url, destination, name)
+                response = download.generic(site, url, destination, name)
 
             if response[0] != 1 and response[0] != 2:
                 string_code = utils.return_code_to_string(response[0])
-
                 # Print the current item and total progress
                 if response[1] != False:
-                    report(string_code, '{} - {}'.format(utils.format_count(length, self.current), response[1]))
+                    with self.thread_lock:
+                        self.current = self.current + 1
+                        if v == True:
+                            report(string_code, '{} - {}'.format(utils.format_count(length, self.current), response[1]))
 
-            return response
+            self._queue.put(response)
 
         else:
             # If the item (destination) already exists we skip it
-            return (dict_return_codes['skip'], 'Skipped {}'.format(destination))
+            self._queue.put((dict_return_codes['skip'], 'Skipped {}'.format(destination)))
 
     def detect_site(self):
 
@@ -957,7 +1146,11 @@ class ibdl():
 
         return site
 
+    @classmethod
     def check_list(self, lst, match=None, cdir=None):
+
+        if lst == False or lst == None:
+            return
 
         temp = []
         count = 2
@@ -984,21 +1177,17 @@ class ibdl():
 
         return lst
 
-    def download_images(self, items, match = None, current_item = 0):
+    @classmethod
+    def download_images(self, items, match = None, v = True, custom_length = False):
 
         '''Download the items returned from the scraper'''
 
+        if items == False or items == None:
+            return
+
         results = []
 
-        self.current = 0
-
-        if match != None:
-            print_debug('info', "Match (Regex): " + str(match.groups()))
-
-            if len(match.groups()) == 5:
-                print(match.groups())
-
-        if len(items[0]) > 0:
+        if len(items[0]) > 0 and v == True:
             if items[1][1:] == items[1][:-1]:
                 if download.use_sep_dir == True:
                     report('info', os.path.normpath('Downloading to: {}/{}'.format(download.save_directory, items[1][0])))
@@ -1009,12 +1198,42 @@ class ibdl():
 
         print_debug('info', "Initiating download process for " + str(len(items[0])) + " item(s) ..")
 
-        coroutines = [self.download(
-            main_item, items[1][x], items[2][x], items[3][x], items[4][x], len(items[0])
-            ) for x, main_item in enumerate(items[0])
-        ]
+        threads = [None] * len(items[0])
 
-        results = self.loop.run_until_complete(asyncio.gather(*coroutines))
+        threads_list = list()
+
+        if custom_length == False:
+            items_length = len(items[0])
+        else:
+            items_length = int(custom_length)
+
+        for i, main in enumerate(items[0]):
+            if ibdl.sleep > 0:
+                time.sleep(ibdl.sleep)
+
+            threads[i] = Thread(
+                target=self.download,
+                args=(main, items[1][i], items[2][i], items[3][i], items[4][i], items_length)
+            )
+
+            threads[i].start()
+
+            threads_list.append(threads[i])
+
+            while threading.active_count() > ibdl.maximum_threads:
+                print_debug('thread' , 'Excessive threads (' + str(threading.active_count()) + '). Waiting ..')
+                time.sleep(1)
+
+        while threading.active_count() > 1:
+            print_debug('thread' , 'Threads running (Wind down): ' + str(threading.active_count()) + '.')
+            time.sleep(2)
+
+        for thread in threads_list:
+            thread.join()
+
+        while not self._queue.empty():
+            results.append(self._queue.get())
+
 
         return_codes = []
 
@@ -1041,6 +1260,7 @@ def main():
         report('info', 'This script requires Python 3+'); sys.exit(0)
 
     parser = argparse.ArgumentParser(description = "Imageboard Downloader [{}]".format(version))
+
     parser.add_argument('urls', default = [], nargs = '*', help = 'one or more URLs to scrape')
     parser.add_argument('-p', dest = 'path', default = None, help = 'where to save files (default is working directory)', required = False)
     parser.add_argument('-x', dest='x', action='store_true', help = 'disables saving files into separate folders (see -d)', required = False)
@@ -1048,6 +1268,8 @@ def main():
     (this folder will be created inside the path, default is a unique name fetched from the URL)', required = False)
     parser.add_argument('-v', dest='v', action='store_true', help='show current version', required = False)
     parser.add_argument('--debug', dest='debug', action='store_true', help='print debug information', required = False)
+    parser.add_argument('-t', dest = 'thread_count', default = 32, help = 'maximum concurrent threads', required = False)
+    parser.add_argument('-s', dest = 'sleep', default = 0, help = 'amount of time in seconds to sleep in between requests', required = False)
 
     # Retrieve arguments
     args = parser.parse_args()
@@ -1073,9 +1295,9 @@ def main():
         else:
             # Go through URL(s)
             for url in args.urls:
-                ibdl(url, args.path, args.directory_name, not args.x)
-
-            ibdl.loop.close()
+                ibdl(
+                    url, args.path, args.directory_name, not args.x, threads=int(args.thread_count), sleep=float(args.sleep)
+                )
 
     # Exceptions
     except ErrorRequest as exception:
